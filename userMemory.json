@@ -1,0 +1,73 @@
+{
+  "weights": {
+    "price": 0.2900000000000001,
+    "duration": 0.41,
+    "stops": 0.19999999999999998,
+    "airline": 0.09999999999999999
+  },
+  "history": [
+    {
+      "origin": "MIA",
+      "destination": "LAX",
+      "departure": "2026-03-10T16:25:00",
+      "arrival": "2026-03-11T00:08:00",
+      "airline": "F9",
+      "stops": 1,
+      "durationMinutes": 643,
+      "price": 247.15,
+      "currency": "EUR",
+      "score": 41.45,
+      "label": "⚡ Balanced Choice"
+    },
+    {
+      "origin": "MIA",
+      "destination": "LAX",
+      "departure": "2026-03-10T06:40:00",
+      "arrival": "2026-03-10T15:05:00",
+      "airline": "UA",
+      "stops": 1,
+      "durationMinutes": 685,
+      "price": 251.45,
+      "currency": "EUR",
+      "score": 39.82
+    },
+    {
+      "origin": "MIA",
+      "destination": "LAX",
+      "departure": "2026-03-10T16:25:00",
+      "arrival": "2026-03-11T00:08:00",
+      "airline": "F9",
+      "stops": 1,
+      "durationMinutes": 643,
+      "price": 247.15,
+      "currency": "EUR",
+      "score": 46.76,
+      "label": "🟢 Smart Pick"
+    },
+    {
+      "origin": "MIA",
+      "destination": "LAX",
+      "departure": "2026-03-10T13:05:00",
+      "arrival": "2026-03-11T10:00:00",
+      "airline": "SY",
+      "stops": 1,
+      "durationMinutes": 1435,
+      "price": 190.64,
+      "currency": "EUR",
+      "score": 40
+    },
+    {
+      "origin": "MIA",
+      "destination": "LAX",
+      "departure": "2026-03-10T06:40:00",
+      "arrival": "2026-03-10T15:05:00",
+      "airline": "UA",
+      "stops": 1,
+      "durationMinutes": 685,
+      "price": 251.45,
+      "currency": "EUR",
+      "score": 43.43,
+      "label": "💰 Budget Option"
+    }
+  ]
+}

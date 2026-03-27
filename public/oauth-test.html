@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Skysirv Google Test</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <h2>Skysirv OAuth Test</h2>
+
+    <div id="g_id_onload"
+         data-client_id="111755779840-3adb0k4nh1a8jh37eava87q11mbmhg8i.apps.googleusercontent.com"
+         data-callback="handleCredentialResponse">
+    </div>
+
+    <div class="g_id_signin"></div>
+
+    <pre id="output"></pre>
+
+    <script>
+      function handleCredentialResponse(response) {
+        document.getElementById("output").innerText =
+          "ID TOKEN:\n\n" + response.credential;
+      }
+    </script>
+  </body>
+</html>

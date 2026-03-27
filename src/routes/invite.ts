@@ -1,0 +1,115 @@
+import { FastifyInstance } from "fastify"
+import crypto from "crypto"
+import bcrypt from "bcrypt"
+
+export async function inviteRoutes(app: FastifyInstance) {
+
+  app.post("/invite/activate", async (request) => {
+
+    const { token, password } = request.body as {
+      token: string
+      password: string
+    }
+
+    if (!token) {
+      throw new Error("Invite token missing")
+    }
+
+    if (!password) {
+      throw new Error("Password required")
+    }
+
+    const invite = await app.db
+      .selectFrom("invite_tokens")
+      .selectAll()
+      .where("token", "=", token)
+      .executeTakeFirst()
+
+    if (!invite) {
+      throw new Error("Invalid invite token")
+    }
+
+    if (invite.used) {
+      throw new Error("Invite already used")
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10)
+
+    let user = await app.db
+      .selectFrom("users")
+      .selectAll()
+      .where("email", "=", invite.email)
+      .executeTakeFirst()
+
+    if (!user) {
+
+      const userId = crypto.randomUUID()
+
+      await app.db
+        .insertInto("users")
+        .values({
+          id: userId,
+          provider: "email",
+          provider_id: invite.email,
+          email: invite.email,
+          password: passwordHash,
+          created_at: new Date(),
+          is_admin: false
+        } as any)
+        .execute()
+
+      user = {
+        id: userId,
+        email: invite.email
+      } as any
+
+    } else {
+
+      // Update password if user already exists
+      await app.db
+        .updateTable("users")
+        .set({
+          password: passwordHash
+        } as any)
+        .where("id", "=", user.id)
+        .execute()
+
+    }
+
+    const existingSub = await app.db
+      .selectFrom("subscriptions")
+      .selectAll()
+      .where("user_id", "=", user!.id)
+      .executeTakeFirst()
+
+    if (!existingSub) {
+
+      await app.db
+        .insertInto("subscriptions")
+        .values({
+          id: crypto.randomUUID(),
+          user_id: user!.id,
+          plan_id: "pro_lifetime",
+          status: "active",
+          created_at: new Date()
+        } as any)
+        .execute()
+
+    }
+
+    await app.db
+      .updateTable("invite_tokens")
+      .set({
+        used: true
+      })
+      .where("token", "=", token)
+      .execute()
+
+    return {
+      success: true,
+      email: invite.email
+    }
+
+  })
+
+}
