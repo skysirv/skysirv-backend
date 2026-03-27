@@ -6,25 +6,20 @@
     "verbatimModuleSyntax": false,
     "allowImportingTsExtensions": false,
     "moduleDetection": "force",
-
-    "rootDir": ".",
+    "rootDir": "./src",
     "outDir": "./dist",
-
     "strict": true,
     "skipLibCheck": true,
-
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-
   "include": [
-    "src",
-    "scripts"
+    "src"
   ],
-
   "exclude": [
     "node_modules",
     "dist"
