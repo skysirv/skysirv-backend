@@ -225,7 +225,8 @@ export function startWorkers() {
         .selectFrom("monitored_routes as w")
         .select([
           "w.id",
-          "w.route",
+          "w.origin",
+          "w.destination",
           "w.route_hash",
           "w.last_checked_at",
           "w.is_active",
@@ -243,17 +244,8 @@ export function startWorkers() {
       if (routes.length === 0) break
 
       for (const r of routes) {
-        const routeParts = r.route.split("-")
-
-        if (routeParts.length !== 2) {
-          console.warn("⚠️ Skipping monitored route with invalid route format:", {
-            routeHash: r.route_hash,
-            route: r.route,
-          })
-          continue
-        }
-
-        const [origin, destination] = routeParts
+        const origin = r.origin
+        const destination = r.destination
 
         const watchlistRow = await db
           .selectFrom("watchlist")
@@ -266,7 +258,8 @@ export function startWorkers() {
         if (!watchlistRow) {
           console.warn("⚠️ No matching watchlist row found for monitored route:", {
             routeHash: r.route_hash,
-            route: r.route,
+            origin: r.origin,
+            destination: r.destination,
           })
           continue
         }
