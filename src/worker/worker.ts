@@ -194,16 +194,16 @@ export function startWorkers() {
 
     while (true) {
       let query = db
-        .selectFrom("watchlist")
+        .selectFrom("watchlist as w")
         .select([
-          "id",
-          "route_hash",
-          "origin",
-          "destination",
-          "departure_date",
-          "user_id",
-          "last_checked_at",
-          "is_active",
+          "w.id",
+          "w.route_hash",
+          "w.origin",
+          "w.destination",
+          "w.departure_date",
+          "w.user_id",
+          "w.last_checked_at",
+          "w.is_active",
         ])
         .where("is_active", "=", true)
         .orderBy("id")
