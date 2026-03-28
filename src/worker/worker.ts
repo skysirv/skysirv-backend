@@ -59,7 +59,12 @@ export function startWorkers() {
   const monitorWorker = new Worker(
     QUEUE_NAMES.monitor,
     async (job) => {
-      const { routeHash, origin, destination, departureDate } = job.data
+      const { routeHash, origin, destination, departureDate } = job.data as {
+        routeHash: string
+        origin: string
+        destination: string
+        departureDate: string | Date
+      }
 
       console.log("👷 Processing route:", routeHash)
 
@@ -123,7 +128,7 @@ export function startWorkers() {
       await new Promise((r) => setTimeout(r, 1200))
 
       await db
-        .updateTable("watchlist")
+        .updateTable("monitored_routes")
         .set({ last_checked_at: new Date() })
         .where("route_hash", "=", routeHash)
         .execute()
@@ -145,7 +150,13 @@ export function startWorkers() {
   const emailWorker = new Worker(
     QUEUE_NAMES.sendEmail,
     async (job) => {
-      const { userId, airline, price, currency, routeHash } = job.data
+      const { userId, airline, price, currency, routeHash } = job.data as {
+        userId: string
+        airline: string
+        price: number
+        currency: string
+        routeHash: string
+      }
 
       console.log("📧 Sending alert email to user:", userId)
 
@@ -188,7 +199,7 @@ export function startWorkers() {
   const BATCH_SIZE = 200
 
   async function enqueueMonitorTick() {
-    console.log("🕒 Monitor tick: scanning watchlist...")
+    console.log("🕒 Monitor tick: scanning monitored routes...")
 
     let cursor: string | null = null
 
@@ -197,20 +208,17 @@ export function startWorkers() {
         .selectFrom("monitored_routes as w")
         .select([
           "w.id",
+          "w.route",
           "w.route_hash",
-          "w.origin",
-          "w.destination",
-          "w.departure_date",
-          "w.user_id",
           "w.last_checked_at",
           "w.is_active",
         ])
-        .where("is_active", "=", true)
-        .orderBy("id")
+        .where("w.is_active", "=", true)
+        .orderBy("w.id")
         .limit(BATCH_SIZE)
 
       if (cursor) {
-        query = query.where("id", ">", cursor)
+        query = query.where("w.id", ">", cursor)
       }
 
       const routes = await query.execute()
@@ -218,14 +226,42 @@ export function startWorkers() {
       if (routes.length === 0) break
 
       for (const r of routes) {
-        const departureDate = new Date(r.departure_date)
+        const routeParts = r.route.split("-")
+
+        if (routeParts.length !== 2) {
+          console.warn("⚠️ Skipping monitored route with invalid route format:", {
+            routeHash: r.route_hash,
+            route: r.route,
+          })
+          continue
+        }
+
+        const [origin, destination] = routeParts
+
+        const watchlistRow = await db
+          .selectFrom("watchlist")
+          .select(["id", "user_id", "departure_date", "created_at"])
+          .where("origin", "=", origin)
+          .where("destination", "=", destination)
+          .orderBy("created_at", "desc")
+          .executeTakeFirst()
+
+        if (!watchlistRow) {
+          console.warn("⚠️ No matching watchlist row found for monitored route:", {
+            routeHash: r.route_hash,
+            route: r.route,
+          })
+          continue
+        }
+
+        const departureDate = new Date(watchlistRow.departure_date)
 
         const dynamicMs = computeDynamicIntervalMs(departureDate)
 
         const subscription = await db
           .selectFrom("subscriptions")
           .select(["plan_id", "status"])
-          .where("user_id", "=", r.user_id)
+          .where("user_id", "=", watchlistRow.user_id)
           .where("status", "=", "active")
           .executeTakeFirst()
 
@@ -257,9 +293,9 @@ export function startWorkers() {
           QUEUE_NAMES.monitor,
           {
             routeHash: r.route_hash,
-            origin: r.origin,
-            destination: r.destination,
-            departureDate: r.departure_date,
+            origin,
+            destination,
+            departureDate: watchlistRow.departure_date,
           },
           {
             jobId: r.route_hash,
@@ -273,7 +309,7 @@ export function startWorkers() {
       cursor = routes[routes.length - 1].id ?? null
     }
 
-    console.log("✅ Watchlist scan completed")
+    console.log("✅ Monitored routes scan completed")
   }
 
   const MONITOR_INTERVAL_MS = 6 * 60 * 60 * 1000
