@@ -5,6 +5,7 @@ import { monitorRoute } from "../monitor/monitorRoute.js"
 import { DuffelAdapter } from "../providers/duffelAdapter.js"
 import { env } from "../config/env.js"
 import { sendAlertEmail } from "../services/notificationService.js"
+import { AmadeusAdapter } from "../providers/amadeusAdapter.js"
 
 function parseBool(v: unknown): boolean {
   if (typeof v !== "string") return false
@@ -48,7 +49,10 @@ function applySubscriptionGovernor(
 }
 
 export function startWorkers() {
-  const provider = new DuffelAdapter()
+  const providers = [
+    new DuffelAdapter(),
+    new AmadeusAdapter(),
+  ]
 
   /*
   --------------------------------
@@ -108,10 +112,23 @@ export function startWorkers() {
             ]
           }
 
-          const results = await provider.searchFlights({
-            origin: route.origin,
-            destination: route.destination,
-            departureDate: departureDateString,
+          const providerResults = await Promise.allSettled(
+            providers.map((provider) =>
+              provider.searchFlights({
+                origin: route.origin,
+                destination: route.destination,
+                departureDate: departureDateString,
+              })
+            )
+          )
+
+          const results = providerResults.flatMap((result) => {
+            if (result.status === "fulfilled") {
+              return result.value
+            }
+
+            console.error("Provider search failed:", result.reason)
+            return []
           })
 
           console.log("📦 Prices returned:", results.length)
