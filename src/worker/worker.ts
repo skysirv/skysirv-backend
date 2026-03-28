@@ -194,7 +194,7 @@ export function startWorkers() {
 
     while (true) {
       let query = db
-        .selectFrom("watchlist as w")
+        .selectFrom("monitored_routes as w")
         .select([
           "w.id",
           "w.route_hash",
