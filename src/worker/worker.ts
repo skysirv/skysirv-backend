@@ -240,6 +240,8 @@ export function startWorkers() {
 
       const routes = await query.execute()
 
+      console.log("📊 Monitored routes fetched:", routes.length)
+
       if (routes.length === 0) break
 
       for (const r of routes) {
