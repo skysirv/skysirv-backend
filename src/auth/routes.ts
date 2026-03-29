@@ -263,6 +263,8 @@ export async function authRoutes(app: FastifyInstance) {
         is_verified: boolean
       } | undefined
 
+    console.log("LOGIN USER FROM DB:", user)
+
     if (!user || !user.password) {
       return reply.status(401).send({
         error: "Invalid credentials"
