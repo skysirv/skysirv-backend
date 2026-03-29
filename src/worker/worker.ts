@@ -49,10 +49,7 @@ function applySubscriptionGovernor(
 }
 
 export function startWorkers() {
-  const providers = [
-    new DuffelAdapter(),
-    new AmadeusAdapter(),
-  ]
+  const providers = [new DuffelAdapter(), new AmadeusAdapter()]
 
   /*
   --------------------------------
@@ -240,8 +237,6 @@ export function startWorkers() {
 
       const routes = await query.execute()
 
-      console.log("📊 Monitored routes fetched:", routes.length)
-
       if (routes.length === 0) break
 
       for (const r of routes) {
@@ -271,7 +266,6 @@ export function startWorkers() {
         }
 
         const departureDate = new Date(watchlistRow.departure_date)
-
         const dynamicMs = computeDynamicIntervalMs(departureDate)
 
         const subscription = await db
@@ -294,14 +288,14 @@ export function startWorkers() {
         }
 
         const finalIntervalMs = applySubscriptionGovernor(dynamicMs, planName)
-
         const now = Date.now()
-
         const lastChecked = r.last_checked_at
           ? new Date(r.last_checked_at).getTime()
           : 0
 
-        const due = true
+        const due = now - lastChecked >= finalIntervalMs
+
+        if (!due) continue
 
         await monitorQueue.add(
           QUEUE_NAMES.monitor,
@@ -326,13 +320,21 @@ export function startWorkers() {
     console.log("✅ Monitored routes scan completed")
   }
 
+  async function runMonitorTick() {
+    try {
+      await enqueueMonitorTick()
+    } catch (error) {
+      console.error("🔥 Monitor tick failed:", error)
+    }
+  }
+
   const MONITOR_INTERVAL_MS = 6 * 60 * 60 * 1000
 
   setInterval(() => {
-    void enqueueMonitorTick()
+    void runMonitorTick()
   }, MONITOR_INTERVAL_MS)
 
-  void enqueueMonitorTick()
+  void runMonitorTick()
 
   monitorWorker.on("completed", (job) => {
     console.log(`🎯 Monitor job completed: ${job.name} (${job.id})`)
