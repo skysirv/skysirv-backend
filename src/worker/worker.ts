@@ -299,9 +299,7 @@ export function startWorkers() {
           ? new Date(r.last_checked_at).getTime()
           : 0
 
-        const due = now - lastChecked >= finalIntervalMs
-
-        if (!due) continue
+        const due = true
 
         await monitorQueue.add(
           QUEUE_NAMES.monitor,
