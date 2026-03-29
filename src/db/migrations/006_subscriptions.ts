@@ -1,5 +1,4 @@
-import { Kysely, sql } from "kysely";
-
+import { Kysely, sql } from "kysely"
 export async function up(db: Kysely<any>): Promise<void> {
   await db.schema
     .createTable("plans")
@@ -8,10 +7,55 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn("max_watchlists", "integer", (col) => col.notNull())
     .addColumn("max_alerts", "integer", (col) => col.notNull())
     .addColumn("price_monthly", "numeric", (col) => col.notNull())
+    .addColumn("stripe_price_id", "text") // ✅ ADD THIS
     .addColumn("created_at", "timestamp", (col) =>
       col.defaultTo(sql`now()`).notNull()
     )
     .execute();
+
+  // ✅ SEED PLANS (PRODUCTION GRADE)
+  await db.insertInto("plans").values([
+    {
+      id: "free",
+      name: "Free",
+      max_watchlists: 3,
+      max_alerts: 10,
+      price_monthly: 0,
+      stripe_price_id: null
+    },
+    {
+      id: "pro_monthly",
+      name: "Pro Monthly",
+      max_watchlists: 25,
+      max_alerts: 100,
+      price_monthly: 29,
+      stripe_price_id: "price_1T87jO23AJ546dofyqIzTqEZ"
+    },
+    {
+      id: "pro_yearly",
+      name: "Pro Yearly",
+      max_watchlists: 25,
+      max_alerts: 100,
+      price_monthly: 290,
+      stripe_price_id: "price_1T87k123AJ546doflJlcIh0h"
+    },
+    {
+      id: "enterprise_monthly",
+      name: "Enterprise Monthly",
+      max_watchlists: 100,
+      max_alerts: 500,
+      price_monthly: 99,
+      stripe_price_id: "price_1T87lZ23AJ546dofFXkye5uP"
+    },
+    {
+      id: "enterprise_yearly",
+      name: "Enterprise Yearly",
+      max_watchlists: 100,
+      max_alerts: 500,
+      price_monthly: 990,
+      stripe_price_id: "price_1T87m423AJ546dofSp3Pkb7R"
+    }
+  ]).execute();
 
   await db.schema
     .createTable("subscriptions")
@@ -36,10 +80,4 @@ export async function up(db: Kysely<any>): Promise<void> {
     .on("subscriptions")
     .columns(["user_id", "status"])
     .execute();
-}
-
-export async function down(db: Kysely<any>): Promise<void> {
-  await db.schema.dropIndex("subscriptions_user_status_idx").execute();
-  await db.schema.dropTable("subscriptions").execute();
-  await db.schema.dropTable("plans").execute();
 }
