@@ -16,15 +16,11 @@ const envSchema = z.object({
   EMAIL_USER: z.string().email(),
   EMAIL_PASS: z.string().min(1),
 
-  // ==============================
-  // Stripe (Test Mode for now)
-  // ==============================
+  APP_BASE_URL: z.string().url(),
+  FRONTEND_BASE_URL: z.string().url(),
 
   STRIPE_SECRET_KEY: z.string().min(1),
   STRIPE_PUBLISHABLE_KEY: z.string().min(1),
-
-  // We will use this later for webhook signature verification.
-  // It can be optional for now until we wire the webhook.
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
 
   STRIPE_SUCCESS_URL: z.string().url(),

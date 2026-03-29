@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify"
 import crypto from "crypto"
 import bcrypt from "bcrypt"
 import { sendVerificationEmail } from "../services/email.js"
+import { env } from "../config/env.js"
 
 export async function authRoutes(app: FastifyInstance) {
   /**
@@ -13,7 +14,7 @@ export async function authRoutes(app: FastifyInstance) {
       password?: string
     }
 
-    console.log("LOGIN BODY:", request.body)
+    console.log("REGISTER BODY:", request.body)
 
     if (!email || !password) {
       return reply.status(400).send({
@@ -76,7 +77,7 @@ export async function authRoutes(app: FastifyInstance) {
     /**
      * Build activation link
      */
-    const verifyLink = `http://localhost:4000/auth/activate/${token}`
+    const verifyLink = `${env.APP_BASE_URL}/auth/activate/${token}`
 
     /**
      * Send activation email
@@ -168,7 +169,7 @@ export async function authRoutes(app: FastifyInstance) {
      * Redirect to choose plan with token
      */
     return reply.redirect(
-      `http://localhost:3000/choose-plan?token=${encodeURIComponent(authToken)}`
+      `${env.FRONTEND_BASE_URL}/choose-plan?token=${encodeURIComponent(authToken)}`
     )
   })
 
@@ -348,15 +349,15 @@ export async function authRoutes(app: FastifyInstance) {
         },
         subscription: activeSubscription
           ? {
-              id: activeSubscription.id,
-              user_id: activeSubscription.user_id,
-              plan_id: activeSubscription.plan_id,
-              status: activeSubscription.status,
-              billing_interval: activeSubscription.billing_interval,
-              stripe_subscription_id: activeSubscription.stripe_subscription_id,
-              current_period_end: activeSubscription.current_period_end,
-              created_at: activeSubscription.created_at
-            }
+            id: activeSubscription.id,
+            user_id: activeSubscription.user_id,
+            plan_id: activeSubscription.plan_id,
+            status: activeSubscription.status,
+            billing_interval: activeSubscription.billing_interval,
+            stripe_subscription_id: activeSubscription.stripe_subscription_id,
+            current_period_end: activeSubscription.current_period_end,
+            created_at: activeSubscription.created_at
+          }
           : null
       }
     }
