@@ -119,7 +119,7 @@ export async function adminRoutes(app: FastifyInstance) {
         })
         .execute()
 
-      const inviteLink = `http://localhost:3000/invite/${token}`
+      const inviteLink = `${process.env.FRONTEND_BASE_URL}/invite/${token}`
 
       await sendInviteEmail(email, inviteLink)
 
@@ -336,23 +336,23 @@ export async function adminRoutes(app: FastifyInstance) {
 
       const trips = tripIds.length
         ? await (app.db as any)
-            .selectFrom("trips")
-            .selectAll()
-            .where("user_id", "=", currentUser.id)
-            .where("id", "in", tripIds)
-            .orderBy("started_at", "asc")
-            .execute()
+          .selectFrom("trips")
+          .selectAll()
+          .where("user_id", "=", currentUser.id)
+          .where("id", "in", tripIds)
+          .orderBy("started_at", "asc")
+          .execute()
         : []
 
       const segments = tripIds.length
         ? await (app.db as any)
-            .selectFrom("trip_segments")
-            .selectAll()
-            .where("user_id", "=", currentUser.id)
-            .where("trip_id", "in", tripIds)
-            .orderBy("trip_id", "asc")
-            .orderBy("segment_order", "asc")
-            .execute()
+          .selectFrom("trip_segments")
+          .selectAll()
+          .where("user_id", "=", currentUser.id)
+          .where("trip_id", "in", tripIds)
+          .orderBy("trip_id", "asc")
+          .orderBy("segment_order", "asc")
+          .execute()
         : []
 
       return {
@@ -577,7 +577,10 @@ export async function adminRoutes(app: FastifyInstance) {
         return reply.status(401).send({ error: "Invalid token" })
       }
 
-      reply.raw.setHeader("Access-Control-Allow-Origin", "http://localhost:3000")
+      reply.raw.setHeader(
+        "Access-Control-Allow-Origin",
+        process.env.FRONTEND_BASE_URL || "http://localhost:3000"
+      )
       reply.raw.setHeader("Content-Type", "text/event-stream")
       reply.raw.setHeader("Cache-Control", "no-cache")
       reply.raw.setHeader("Connection", "keep-alive")
@@ -586,7 +589,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
       const sendEvent = (message: string) => {
         const event = {
-          time: new Date().toLocaleTimeString(),
+          time: new Date().toISOString(), // ✅ FIXED (no timezone drift)
           message
         }
 
