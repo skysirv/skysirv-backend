@@ -32,7 +32,8 @@ export function buildServer() {
       "http://127.0.0.1:3000",
       "http://localhost:3000",
       "https://skysirv.com",
-      "https://www.skysirv.com"
+      "https://www.skysirv.com",
+      "https://skysirv-frontend.vercel.app"
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
