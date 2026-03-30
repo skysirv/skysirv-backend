@@ -28,13 +28,27 @@ export function buildServer() {
   })
 
   app.register(cors, {
-    origin: [
-      "http://127.0.0.1:3000",
-      "http://localhost:3000",
-      "https://skysirv.com",
-      "https://www.skysirv.com",
-      "https://skysirv-frontend.vercel.app"
-    ],
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true)
+
+      const allowedExact = [
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+        "https://skysirv.com",
+        "https://www.skysirv.com",
+        "https://skysirv-frontend.vercel.app"
+      ]
+
+      const isAllowedVercelPreview =
+        origin.startsWith("https://skysirv-frontend-") &&
+        origin.endsWith(".vercel.app")
+
+      if (allowedExact.includes(origin) || isAllowedVercelPreview) {
+        return cb(null, true)
+      }
+
+      return cb(new Error("Not allowed by CORS"), false)
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
