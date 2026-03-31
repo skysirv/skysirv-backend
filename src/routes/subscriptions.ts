@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify"
+import { logAdminActivity } from "../services/adminActivity.js"
 
 export async function subscriptionRoutes(app: FastifyInstance) {
   /**
@@ -68,6 +69,10 @@ export async function subscriptionRoutes(app: FastifyInstance) {
         })
         .returningAll()
         .executeTakeFirst()
+
+      if (plan === "free") {
+        await logAdminActivity(app.db, `Free plan selected: ${user.email}`)
+      }
 
       return {
         success: true,

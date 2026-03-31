@@ -1,73 +1,9 @@
 import type Stripe from "stripe"
-import type { Kysely, Transaction } from "kysely"
+import type { Transaction } from "kysely"
 
 import { stripe } from "../lib/stripeClient.js"
-import { db } from "../db/index.js"
-import { env } from "../config/env.js"
 import type { Database } from "../db/types.js"
-
-// ==============================
-// Checkout Session
-// ==============================
-
-export async function createCheckoutSession(
-  userId: string,
-  planId: string
-) {
-  const user = await db
-    .selectFrom("users")
-    .select(["id", "email"])
-    .where("id", "=", userId)
-    .executeTakeFirst()
-
-  if (!user) {
-    throw new Error("User not found")
-  }
-
-  const plan = await db
-    .selectFrom("plans")
-    .select(["id", "stripe_price_id"])
-    .where("id", "=", planId)
-    .executeTakeFirst()
-
-  if (!plan || !plan.stripe_price_id) {
-    throw new Error("Plan not configured for Stripe")
-  }
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-
-    customer_email: user.email,
-
-    line_items: [
-      {
-        price: plan.stripe_price_id,
-        quantity: 1
-      }
-    ],
-
-    success_url: env.STRIPE_SUCCESS_URL,
-    cancel_url: env.STRIPE_CANCEL_URL,
-
-    metadata: {
-      userId: user.id,
-      planId: plan.id
-    },
-
-    subscription_data: {
-      metadata: {
-        userId: user.id,
-        planId: plan.id
-      }
-    }
-  })
-
-  return session.url
-}
-
-// ==============================
-// Billing Service
-// ==============================
+import { logAdminActivity } from "./adminActivity.js"
 
 export class BillingService {
   async handleStripeEvent(
@@ -89,10 +25,6 @@ export class BillingService {
       return
     }
   }
-
-  // ==============================
-  // Checkout Completed
-  // ==============================
 
   private async handleCheckoutCompleted(
     event: Stripe.Event,
@@ -136,7 +68,7 @@ export class BillingService {
           plan_id: planId,
           status: stripeSub.status,
           current_period_end: periodEnd ?? null,
-          stripe_subscription_id: stripeSubscriptionId
+          stripe_subscription_id: stripeSubscriptionId,
         })
         .where("user_id", "=", userId)
         .execute()
@@ -148,15 +80,25 @@ export class BillingService {
           plan_id: planId,
           status: stripeSub.status,
           current_period_end: periodEnd ?? null,
-          stripe_subscription_id: stripeSubscriptionId
+          stripe_subscription_id: stripeSubscriptionId,
         } as any)
         .execute()
     }
-  }
 
-  // ==============================
-  // Invoice Paid
-  // ==============================
+    // 🔥 ADMIN ACTIVITY LOG (THIS IS THE BIG ONE)
+    const user = await trx
+      .selectFrom("users")
+      .select(["email"])
+      .where("id", "=", userId)
+      .executeTakeFirst()
+
+    const email = user?.email ?? userId
+
+    await logAdminActivity(
+      trx,
+      `Subscription activated: ${email} — ${planId}`
+    )
+  }
 
   private async handleInvoicePaid(
     event: Stripe.Event,
@@ -184,15 +126,11 @@ export class BillingService {
       .updateTable("subscriptions")
       .set({
         status: stripeSub.status,
-        current_period_end: periodEnd ?? null
+        current_period_end: periodEnd ?? null,
       })
       .where("stripe_subscription_id", "=", stripeSubscriptionId)
       .execute()
   }
-
-  // ==============================
-  // Subscription Deleted
-  // ==============================
 
   private async handleSubscriptionDeleted(
     event: Stripe.Event,
@@ -203,9 +141,15 @@ export class BillingService {
     await trx
       .updateTable("subscriptions")
       .set({
-        status: "canceled"
+        status: "canceled",
       })
       .where("stripe_subscription_id", "=", subscription.id)
       .execute()
+
+    // Optional: log cancellation (nice to have)
+    await logAdminActivity(
+      trx,
+      `Subscription canceled: ${subscription.id}`
+    )
   }
 }

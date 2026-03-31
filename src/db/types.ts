@@ -146,6 +146,12 @@ export interface StripeEventsTable {
   created_at: Date
 }
 
+export interface AdminActivityTable {
+  id: string
+  message: string
+  created_at: Date
+}
+
 export interface UserIntelligenceWrappedTable {
   id: string
   user_id: string
@@ -182,6 +188,7 @@ export interface Database {
   trip_segments: TripSegmentsTable
   user_intelligence_wrapped: UserIntelligenceWrappedTable
   stripe_events: StripeEventsTable
+  admin_activity: AdminActivityTable
   monitored_routes: any
   user_monitors: any
   invite_tokens: any

@@ -3,6 +3,7 @@ import crypto from "crypto"
 import bcrypt from "bcrypt"
 import { sendVerificationEmail } from "../services/email.js"
 import { env } from "../config/env.js"
+import { logAdminActivity } from "../services/adminActivity.js"
 
 export async function authRoutes(app: FastifyInstance) {
   /**
@@ -53,6 +54,8 @@ export async function authRoutes(app: FastifyInstance) {
         is_verified: false
       } as any)
       .execute()
+
+    await logAdminActivity(app.db, `Account created: ${normalizedEmail}`)
 
     /**
      * Generate verification token
@@ -156,6 +159,8 @@ export async function authRoutes(app: FastifyInstance) {
         error: "User not found"
       })
     }
+
+    await logAdminActivity(app.db, `Email verified: ${user.email}`)
 
     /**
      * Create auth token so user lands already signed in

@@ -2,6 +2,8 @@ import { FastifyInstance } from "fastify"
 import { adminGuard } from "../auth/adminGuard.js"
 import crypto from "crypto"
 import { sendInviteEmail } from "../services/email.js"
+import { env } from "../config/env.js"
+import { logAdminActivity } from "../services/adminActivity.js"
 
 export async function adminRoutes(app: FastifyInstance) {
   /**
@@ -32,15 +34,25 @@ export async function adminRoutes(app: FastifyInstance) {
       const proUsers = await app.db
         .selectFrom("subscriptions")
         .select((eb) => eb.fn.count("id").as("count"))
-        .where("plan_id", "=", "pro")
         .where("status", "=", "active")
+        .where((eb) =>
+          eb.or([
+            eb("plan_id", "=", "pro"),
+            eb("plan_id", "like", "pro_%")
+          ])
+        )
         .executeTakeFirst()
 
       const enterpriseUsers = await app.db
         .selectFrom("subscriptions")
         .select((eb) => eb.fn.count("id").as("count"))
-        .where("plan_id", "=", "enterprise")
         .where("status", "=", "active")
+        .where((eb) =>
+          eb.or([
+            eb("plan_id", "=", "enterprise"),
+            eb("plan_id", "like", "enterprise_%")
+          ])
+        )
         .executeTakeFirst()
 
       const monitoredRoutes = await app.db
@@ -87,6 +99,32 @@ export async function adminRoutes(app: FastifyInstance) {
   )
 
   /**
+   * Recent admin activity history
+   */
+  app.get(
+    "/admin/activity",
+    {
+      preHandler: [app.authenticate, adminGuard]
+    },
+    async () => {
+      const rows = await app.db
+        .selectFrom("admin_activity")
+        .select(["id", "message", "created_at"])
+        .orderBy("created_at", "desc")
+        .limit(50)
+        .execute()
+
+      return {
+        activity: rows.map((row) => ({
+          id: row.id,
+          time: new Date(row.created_at).toISOString(),
+          message: row.message
+        }))
+      }
+    }
+  )
+
+  /**
    * Invite beta user
    */
   app.post(
@@ -119,9 +157,10 @@ export async function adminRoutes(app: FastifyInstance) {
         })
         .execute()
 
-      const inviteLink = `${process.env.FRONTEND_BASE_URL}/invite/${token}`
+      const inviteLink = `${env.FRONTEND_BASE_URL}/invite/${token}`
 
       await sendInviteEmail(email, inviteLink)
+      await logAdminActivity(app.db, `Lifetime Pro gift sent: ${email}`)
 
       return {
         success: true,
@@ -437,10 +476,26 @@ export async function adminRoutes(app: FastifyInstance) {
         throw new Error("You cannot delete your own admin account")
       }
 
+      const user = await app.db
+        .selectFrom("users")
+        .select(["id", "email", "is_admin"])
+        .where("id", "=", id)
+        .executeTakeFirst()
+
+      if (!user) {
+        throw new Error("User not found")
+      }
+
+      if (user.is_admin) {
+        throw new Error("Admin account cannot be deleted")
+      }
+
       await app.db
         .deleteFrom("users")
         .where("id", "=", id)
         .execute()
+
+      await logAdminActivity(app.db, `User removed: ${user.email}`)
 
       return {
         success: true
@@ -577,31 +632,47 @@ export async function adminRoutes(app: FastifyInstance) {
         return reply.status(401).send({ error: "Invalid token" })
       }
 
-      reply.raw.setHeader(
-        "Access-Control-Allow-Origin",
-        process.env.FRONTEND_BASE_URL || "http://localhost:3000"
-      )
+      reply.raw.setHeader("Access-Control-Allow-Origin", env.FRONTEND_BASE_URL)
       reply.raw.setHeader("Content-Type", "text/event-stream")
       reply.raw.setHeader("Cache-Control", "no-cache")
       reply.raw.setHeader("Connection", "keep-alive")
 
       reply.raw.flushHeaders()
 
-      const sendEvent = (message: string) => {
-        const event = {
-          time: new Date().toISOString(), // ✅ FIXED (no timezone drift)
-          message
-        }
+      let lastSeenCreatedAt = new Date().toISOString()
 
-        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
+      const sendEvent = (payload: { time: string; message: string }) => {
+        reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`)
       }
 
-      const interval = setInterval(() => {
-        sendEvent("System heartbeat")
-      }, 15000)
+      const poll = setInterval(async () => {
+        try {
+          const rows = await app.db
+            .selectFrom("admin_activity")
+            .select(["id", "message", "created_at"])
+            .where("created_at", ">", new Date(lastSeenCreatedAt))
+            .orderBy("created_at", "asc")
+            .execute()
+
+          for (const row of rows) {
+            lastSeenCreatedAt = new Date(row.created_at).toISOString()
+            sendEvent({
+              time: new Date(row.created_at).toISOString(),
+              message: row.message
+            })
+          }
+        } catch (error) {
+          request.log.error(error)
+        }
+      }, 3000)
+
+      const keepAlive = setInterval(() => {
+        reply.raw.write(`: keepalive\n\n`)
+      }, 30000)
 
       request.raw.on("close", () => {
-        clearInterval(interval)
+        clearInterval(poll)
+        clearInterval(keepAlive)
       })
     }
   )

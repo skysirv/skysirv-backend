@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify"
 import { stripe } from "../lib/stripeClient.js"
 import { env } from "../config/env.js"
+import { logAdminActivity } from "../services/adminActivity.js"
 
 type CheckoutBody = {
   plan: "pro" | "enterprise"
@@ -8,7 +9,6 @@ type CheckoutBody = {
 }
 
 export async function billingRoutes(app: FastifyInstance) {
-
   /**
    * Create Stripe Checkout Session
    * POST /billing/create-checkout-session
@@ -17,10 +17,8 @@ export async function billingRoutes(app: FastifyInstance) {
     "/billing/create-checkout-session",
     { preHandler: app.authenticate },
     async (request, reply) => {
-
       try {
-
-        const user = request.user as { id: string }
+        const user = request.user as { id: string; email?: string }
 
         if (!user.id) {
           return reply.status(401).send({ error: "Unauthorized" })
@@ -69,8 +67,8 @@ export async function billingRoutes(app: FastifyInstance) {
           line_items: [
             {
               price: plan.stripe_price_id,
-              quantity: 1,
-            },
+              quantity: 1
+            }
           ],
 
           success_url: env.STRIPE_SUCCESS_URL,
@@ -79,20 +77,29 @@ export async function billingRoutes(app: FastifyInstance) {
           metadata: {
             userId,
             planId
-          },
+          }
         })
+
+        const userRecord = await app.db
+          .selectFrom("users")
+          .select(["email"])
+          .where("id", "=", userId)
+          .executeTakeFirst()
+
+        const email = userRecord?.email ?? user.email ?? userId
+        const planLabel = `${body.plan.charAt(0).toUpperCase()}${body.plan.slice(1)} ${body.billing === "yearly" ? "Yearly" : "Monthly"}`
+
+        await logAdminActivity(app.db, `Checkout started: ${email} — ${planLabel}`)
 
         return {
           url: session.url
         }
-
       } catch (err) {
         request.log.error(err)
         return reply.status(500).send({
           error: "Checkout session creation failed"
         })
       }
-
     }
   )
 }
