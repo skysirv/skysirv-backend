@@ -640,6 +640,7 @@ export async function adminRoutes(app: FastifyInstance) {
       reply.raw.flushHeaders()
 
       let lastSeenCreatedAt = new Date().toISOString()
+      const sentIds = new Set<string>()
 
       const sendEvent = (payload: { time: string; message: string }) => {
         reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`)
@@ -650,12 +651,27 @@ export async function adminRoutes(app: FastifyInstance) {
           const rows = await app.db
             .selectFrom("admin_activity")
             .select(["id", "message", "created_at"])
-            .where("created_at", ">", new Date(lastSeenCreatedAt))
+            .where("created_at", ">=", new Date(lastSeenCreatedAt))
             .orderBy("created_at", "asc")
             .execute()
 
           for (const row of rows) {
+            if (sentIds.has(row.id)) {
+              continue
+            }
+
+            sentIds.add(row.id)
+
+            if (sentIds.size > 500) {
+              const ids = Array.from(sentIds)
+              sentIds.clear()
+              for (const id of ids.slice(-200)) {
+                sentIds.add(id)
+              }
+            }
+
             lastSeenCreatedAt = new Date(row.created_at).toISOString()
+
             sendEvent({
               time: new Date(row.created_at).toISOString(),
               message: row.message
