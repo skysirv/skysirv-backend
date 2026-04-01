@@ -32,12 +32,37 @@ export async function googleAuthRoutes(app: FastifyInstance) {
 
       const googleUser = await verifyGoogleToken(credential)
 
-      const existing = await app.db
+      // 1. Try find existing Google-linked account
+      let existing = await app.db
         .selectFrom("users")
         .select(["id", "email", "is_admin"])
         .where("provider", "=", "google")
         .where("provider_id", "=", googleUser.provider_id)
         .executeTakeFirst()
+
+      // 2. Fallback: match by email (ACCOUNT LINKING)
+      if (!existing) {
+        const emailMatch = await app.db
+          .selectFrom("users")
+          .select(["id", "email", "is_admin"])
+          .where("email", "=", googleUser.email)
+          .executeTakeFirst()
+
+        if (emailMatch) {
+          // 🔥 Link existing account to Google
+          await app.db
+            .updateTable("users")
+            .set({
+              provider: "google",
+              provider_id: googleUser.provider_id,
+              is_verified: true
+            })
+            .where("id", "=", emailMatch.id)
+            .execute()
+
+          existing = emailMatch
+        }
+      }
 
       let user: GoogleAuthUser
 
