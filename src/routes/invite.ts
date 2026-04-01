@@ -3,9 +3,7 @@ import crypto from "crypto"
 import bcrypt from "bcrypt"
 
 export async function inviteRoutes(app: FastifyInstance) {
-
   app.post("/invite/activate", async (request) => {
-
     const { token, password } = request.body as {
       token: string
       password: string
@@ -42,7 +40,6 @@ export async function inviteRoutes(app: FastifyInstance) {
       .executeTakeFirst()
 
     if (!user) {
-
       const userId = crypto.randomUUID()
 
       await app.db
@@ -54,26 +51,22 @@ export async function inviteRoutes(app: FastifyInstance) {
           email: invite.email,
           password: passwordHash,
           created_at: new Date(),
-          is_admin: false
+          is_admin: false,
         } as any)
         .execute()
 
       user = {
         id: userId,
-        email: invite.email
+        email: invite.email,
       } as any
-
     } else {
-
-      // Update password if user already exists
       await app.db
         .updateTable("users")
         .set({
-          password: passwordHash
+          password: passwordHash,
         } as any)
         .where("id", "=", user.id)
         .execute()
-
     }
 
     const existingSub = await app.db
@@ -83,7 +76,6 @@ export async function inviteRoutes(app: FastifyInstance) {
       .executeTakeFirst()
 
     if (!existingSub) {
-
       await app.db
         .insertInto("subscriptions")
         .values({
@@ -91,25 +83,33 @@ export async function inviteRoutes(app: FastifyInstance) {
           user_id: user!.id,
           plan_id: "pro_lifetime",
           status: "active",
-          created_at: new Date()
+          current_period_end: null,
+          created_at: new Date(),
         } as any)
         .execute()
-
+    } else {
+      await app.db
+        .updateTable("subscriptions")
+        .set({
+          plan_id: "pro_lifetime",
+          status: "active",
+          current_period_end: null,
+        } as any)
+        .where("id", "=", existingSub.id)
+        .execute()
     }
 
     await app.db
       .updateTable("invite_tokens")
       .set({
-        used: true
+        used: true,
       })
       .where("token", "=", token)
       .execute()
 
     return {
       success: true,
-      email: invite.email
+      email: invite.email,
     }
-
   })
-
 }
