@@ -83,7 +83,6 @@ export async function inviteRoutes(app: FastifyInstance) {
           user_id: user!.id,
           plan_id: "pro_lifetime",
           status: "active",
-          current_period_end: null,
           created_at: new Date(),
         } as any)
         .execute()
@@ -93,7 +92,6 @@ export async function inviteRoutes(app: FastifyInstance) {
         .set({
           plan_id: "pro_lifetime",
           status: "active",
-          current_period_end: null,
         } as any)
         .where("id", "=", existingSub.id)
         .execute()
