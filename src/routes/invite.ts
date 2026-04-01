@@ -1,11 +1,10 @@
 import { FastifyInstance } from "fastify"
 import crypto from "crypto"
 import bcrypt from "bcrypt"
+import { logAdminActivity } from "../services/adminActivity.js"
 
 export async function inviteRoutes(app: FastifyInstance) {
-
   app.post("/invite/activate", async (request) => {
-
     const { token, password } = request.body as {
       token: string
       password: string
@@ -42,7 +41,6 @@ export async function inviteRoutes(app: FastifyInstance) {
       .executeTakeFirst()
 
     if (!user) {
-
       const userId = crypto.randomUUID()
 
       await app.db
@@ -54,7 +52,9 @@ export async function inviteRoutes(app: FastifyInstance) {
           email: invite.email,
           password: passwordHash,
           created_at: new Date(),
-          is_admin: false
+          stripe_customer_id: null,
+          is_admin: false,
+          is_verified: true
         } as any)
         .execute()
 
@@ -62,18 +62,15 @@ export async function inviteRoutes(app: FastifyInstance) {
         id: userId,
         email: invite.email
       } as any
-
     } else {
-
-      // Update password if user already exists
       await app.db
         .updateTable("users")
         .set({
-          password: passwordHash
+          password: passwordHash,
+          is_verified: true
         } as any)
         .where("id", "=", user.id)
         .execute()
-
     }
 
     const existingSub = await app.db
@@ -83,18 +80,31 @@ export async function inviteRoutes(app: FastifyInstance) {
       .executeTakeFirst()
 
     if (!existingSub) {
-
       await app.db
         .insertInto("subscriptions")
         .values({
           id: crypto.randomUUID(),
           user_id: user!.id,
-          plan_id: "pro_lifetime",
+          plan_id: "pro",
           status: "active",
+          billing_interval: null,
+          stripe_subscription_id: null,
+          current_period_end: null,
           created_at: new Date()
         } as any)
         .execute()
-
+    } else {
+      await app.db
+        .updateTable("subscriptions")
+        .set({
+          plan_id: "pro",
+          status: "active",
+          billing_interval: null,
+          stripe_subscription_id: null,
+          current_period_end: null
+        } as any)
+        .where("id", "=", existingSub.id)
+        .execute()
     }
 
     await app.db
@@ -105,11 +115,11 @@ export async function inviteRoutes(app: FastifyInstance) {
       .where("token", "=", token)
       .execute()
 
+    await logAdminActivity(app.db, `Lifetime Pro gift redeemed: ${invite.email}`)
+
     return {
       success: true,
       email: invite.email
     }
-
   })
-
 }
