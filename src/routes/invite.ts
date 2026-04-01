@@ -52,6 +52,7 @@ export async function inviteRoutes(app: FastifyInstance) {
           password: passwordHash,
           created_at: new Date(),
           is_admin: false,
+          is_verified: true
         } as any)
         .execute()
 
@@ -64,6 +65,7 @@ export async function inviteRoutes(app: FastifyInstance) {
         .updateTable("users")
         .set({
           password: passwordHash,
+          is_verified: true
         } as any)
         .where("id", "=", user.id)
         .execute()
