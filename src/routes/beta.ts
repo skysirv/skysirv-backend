@@ -88,4 +88,86 @@ export async function betaRoutes(fastify: FastifyInstance) {
             }
         }
     )
+
+    /**
+     * Admin: approve beta application
+     */
+    fastify.post(
+        "/admin/beta-applications/:id/approve",
+        {
+            preHandler: [fastify.authenticate],
+        },
+        async (request, reply) => {
+            try {
+                const { id } = request.params as { id: string }
+
+                const application = await (fastify.db as any)
+                    .updateTable("beta_applications")
+                    .set({
+                        status: "approved",
+                    })
+                    .where("id", "=", id)
+                    .returningAll()
+                    .executeTakeFirst()
+
+                if (!application) {
+                    return reply.status(404).send({
+                        error: "Beta application not found",
+                    })
+                }
+
+                return reply.send({
+                    success: true,
+                    application,
+                })
+            } catch (err) {
+                fastify.log.error(err)
+
+                return reply.status(500).send({
+                    error: "Failed to approve beta application",
+                })
+            }
+        }
+    )
+
+    /**
+     * Admin: reject beta application
+     */
+    fastify.post(
+        "/admin/beta-applications/:id/reject",
+        {
+            preHandler: [fastify.authenticate],
+        },
+        async (request, reply) => {
+            try {
+                const { id } = request.params as { id: string }
+
+                const application = await (fastify.db as any)
+                    .updateTable("beta_applications")
+                    .set({
+                        status: "rejected",
+                    })
+                    .where("id", "=", id)
+                    .returningAll()
+                    .executeTakeFirst()
+
+                if (!application) {
+                    return reply.status(404).send({
+                        error: "Beta application not found",
+                    })
+                }
+
+                return reply.send({
+                    success: true,
+                    application,
+                })
+            } catch (err) {
+                fastify.log.error(err)
+
+                return reply.status(500).send({
+                    error: "Failed to reject beta application",
+                })
+            }
+        }
+    )
 }
