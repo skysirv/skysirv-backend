@@ -4,8 +4,8 @@ import { computePredict, PredictResult } from "./computePredict.js"
 
 export interface PriceHistoryRow {
   price: number
-  currency: string
-  created_at?: Date
+  currency?: string
+  captured_at?: Date
 }
 
 export interface IntelligenceInput {
@@ -83,8 +83,8 @@ export function computeIntelligence(
 
   // Ensure chronological order (oldest → newest)
   const sortedHistory = [...history].sort((a, b) => {
-    if (!a.created_at || !b.created_at) return 0
-    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    if (!a.captured_at || !b.captured_at) return 0
+    return new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
   })
 
   const prices = sortedHistory.map((h) => Number(h.price))
@@ -105,10 +105,10 @@ export function computeIntelligence(
 
   return {
     routeHash,
-    currentPrice,
-    baselinePrice: Math.round(baselinePrice),
+    currentPrice: Number((currentPrice / 100).toFixed(2)),
+    baselinePrice: Number((baselinePrice / 100).toFixed(2)),
     historyDepth: prices.length,
-    volatility,
+    volatility: Number((volatility / 100).toFixed(2)),
     dealLevel,
     predict,
   }

@@ -53,7 +53,7 @@ export async function computePriceInsight(
   else dealLevel = "expensive"
 
   return {
-    median: med,
+    median: Number((med / 100).toFixed(2)),
     dealLevel,
   }
 }

@@ -38,7 +38,7 @@ export async function explorerRoutes(app: FastifyInstance) {
         .selectFrom("flight_price_history")
         .select([
           "route_hash",
-          sql`MAX(created_at)`.as("max_created_at"),
+          sql`MAX(captured_at)`.as("max_captured_at"),
         ])
         .groupBy("route_hash")
         .as("lp")
@@ -52,7 +52,7 @@ export async function explorerRoutes(app: FastifyInstance) {
         .leftJoin("flight_price_history as p", (join: any) =>
           join
             .onRef("p.route_hash", "=", "r.route_hash")
-            .onRef("p.created_at", "=", "lp.max_created_at")
+            .onRef("p.captured_at", "=", "lp.max_captured_at")
         )
         .select([
           "r.route_hash as route_hash",
@@ -60,14 +60,14 @@ export async function explorerRoutes(app: FastifyInstance) {
           "r.destination as destination",
           "p.price as price",
           "p.currency as currency",
-          "p.created_at as created_at",
+          "p.captured_at as captured_at",
         ])
 
       /**
        * Apply sorting
        */
       if (sort === "fresh") {
-        query = query.orderBy("p.created_at", "desc")
+        query = query.orderBy("p.captured_at", "desc")
       } else if (sort === "skyscore") {
         // Placeholder until skyscore is persisted
         query = query.orderBy("p.price", "asc")
@@ -88,7 +88,7 @@ export async function explorerRoutes(app: FastifyInstance) {
           route,
           origin,
           destination,
-          price: row.price ?? null,
+          price: row.price != null ? Number((row.price / 100).toFixed(2)) : null,
           currency: row.currency ?? "USD",
           skyscore: null,
           signal: "WATCH",

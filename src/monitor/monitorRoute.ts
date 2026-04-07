@@ -139,9 +139,12 @@ export async function monitorRoute(
       await db
         .updateTable("flight_price_history")
         .set({
-          skyscore: intelligence?.skyscore ?? null,
-          booking_signal: intelligence?.signal ?? "WATCH",
-          volatility_index: intelligence?.volatility ?? null,
+          skyscore: null,
+          booking_signal: intelligence?.dealLevel ?? "WATCH",
+          volatility_index:
+            intelligence?.volatility != null
+              ? String(intelligence.volatility)
+              : null,
         })
         .where("route_hash", "=", route.routeHash)
         .where("captured_at", "=", capturedAt)
@@ -189,7 +192,7 @@ export async function monitorRoute(
       )
 
       console.log("📈 Price Intelligence", {
-        current: priceInCents,
+        current: Number((priceInCents / 100).toFixed(2)),
         median: insight.median,
         dealLevel: insight.dealLevel,
       })
