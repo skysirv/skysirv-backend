@@ -30,7 +30,6 @@ export async function monitorRoute(
   route: MonitorRouteInput,
   provider: PriceProvider
 ): Promise<void> {
-
   console.log("🧠 monitorRoute START", route.routeHash)
 
   const prices = await provider(route)
@@ -51,7 +50,6 @@ export async function monitorRoute(
   const uniqueMap = new Map<string, NormalizedPrice>()
 
   for (const p of prices) {
-
     const key = `${p.airline}-${p.flightNumber}-${p.price}`
 
     if (!uniqueMap.has(key)) {
@@ -73,10 +71,8 @@ export async function monitorRoute(
   const sorted = [...uniquePrices].sort((a, b) => a.price - b.price)
 
   const cheapest = sorted[0].price
-
   const maxAllowed = cheapest * 2.2
-
-  const filteredPrices = sorted.filter(p => p.price <= maxAllowed)
+  const filteredPrices = sorted.filter((p) => p.price <= maxAllowed)
 
   console.log("🧹 Filtered fares:", filteredPrices.length)
 
@@ -87,10 +83,14 @@ export async function monitorRoute(
   */
 
   for (const p of filteredPrices) {
-
-    console.log("💾 Inserting price history:", p.price)
-
     const capturedAt = new Date()
+    const priceInCents = Math.round(p.price * 100)
+
+    console.log("💾 Inserting price history:", {
+      priceDollars: p.price,
+      priceInCents,
+      currency: p.currency,
+    })
 
     await db
       .insertInto("flight_price_history")
@@ -104,7 +104,7 @@ export async function monitorRoute(
             : new Date(route.departureDate),
         airline: p.airline,
         flight_number: p.flightNumber,
-        price: p.price,
+        price: priceInCents,
         currency: p.currency,
         captured_at: capturedAt,
         skyscore: null,
@@ -127,11 +127,8 @@ export async function monitorRoute(
       .execute()
 
     if (!history || history.length < 2) {
-
       console.log("⚠️ Not enough history yet — skipping intelligence")
-
     } else {
-
       console.log("📊 Computing intelligence")
 
       const intelligence = computeIntelligence({
@@ -188,11 +185,11 @@ export async function monitorRoute(
       const insight = await computePriceInsight(
         db,
         route.routeHash,
-        p.price
+        priceInCents
       )
 
       console.log("📈 Price Intelligence", {
-        current: p.price,
+        current: priceInCents,
         median: insight.median,
         dealLevel: insight.dealLevel,
       })
@@ -200,7 +197,10 @@ export async function monitorRoute(
 
     console.log("➡️ Evaluating alerts")
 
-    await evaluateAlerts(db, queue, route.routeHash, p)
+    await evaluateAlerts(db, queue, route.routeHash, {
+      ...p,
+      price: priceInCents,
+    })
   }
 
   console.log("✅ monitorRoute COMPLETE", route.routeHash)
