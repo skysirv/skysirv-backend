@@ -40,6 +40,17 @@ export async function watchlistRoutes(app: FastifyInstance) {
       const normalizedOrigin = origin.trim().toUpperCase()
       const normalizedDestination = destination.trim().toUpperCase()
 
+      if (normalizedOrigin === normalizedDestination) {
+        console.log("INVALID ROUTE: SAME ORIGIN AND DESTINATION", {
+          origin: normalizedOrigin,
+          destination: normalizedDestination,
+        })
+
+        return reply.status(400).send({
+          error: "Origin and destination cannot be the same airport.",
+        })
+      }
+
       const userId = user.id
 
       console.log("CHECKING ENTITLEMENTS FOR USER:", userId)
