@@ -132,4 +132,75 @@ export async function watchlistRoutes(app: FastifyInstance) {
       return watchlist
     }
   )
+
+  // Delete watchlist route
+  app.delete(
+    "/watchlist/:id",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      console.log("DELETE WATCHLIST ROUTE HIT")
+
+      const user = request.user as { id: string; email: string }
+      const { id } = request.params as { id: string }
+
+      console.log("DELETE REQUEST:", { userId: user.id, watchlistId: id })
+
+      const existing = await db
+        .selectFrom("watchlist")
+        .selectAll()
+        .where("id", "=", id)
+        .where("user_id", "=", user.id)
+        .executeTakeFirst()
+
+      if (!existing) {
+        console.log("WATCHLIST ROW NOT FOUND FOR DELETE")
+        return reply.status(404).send({
+          error: "Watchlist route not found",
+        })
+      }
+
+      await db
+        .deleteFrom("watchlist")
+        .where("id", "=", id)
+        .where("user_id", "=", user.id)
+        .execute()
+
+      console.log("WATCHLIST ROW DELETED:", {
+        id,
+        routeHash: existing.route_hash,
+      })
+
+      const remaining = await db
+        .selectFrom("watchlist")
+        .select(({ fn }) => [fn.count("id").as("count")])
+        .where("route_hash", "=", existing.route_hash)
+        .executeTakeFirst()
+
+      const remainingCount = Number(remaining?.count ?? 0)
+
+      if (remainingCount === 0) {
+        await db
+          .updateTable("monitored_routes")
+          .set({
+            is_active: false,
+            updated_at: new Date(),
+          })
+          .where("route_hash", "=", existing.route_hash)
+          .execute()
+
+        console.log("MONITORED ROUTE DEACTIVATED:", existing.route_hash)
+      } else {
+        console.log("MONITORED ROUTE KEPT ACTIVE:", {
+          routeHash: existing.route_hash,
+          remainingCount,
+        })
+      }
+
+      return reply.send({
+        success: true,
+        deletedId: id,
+        routeHash: existing.route_hash,
+      })
+    }
+  )
 }
