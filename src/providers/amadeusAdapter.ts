@@ -108,8 +108,8 @@ export class AmadeusAdapter implements FlightProvider {
       if (!segment) continue
 
       results.push({
-        airline: segment.carrierCode,
-        flightNumber: segment.number,
+        airline: segment.operating?.carrierCode ?? segment.carrierCode ?? "UNK",
+        flightNumber: segment.number ?? "0",
         departureTime: segment.departure?.at,
         arrivalTime: segment.arrival?.at,
         price: Number(offer.price?.total ?? 0),

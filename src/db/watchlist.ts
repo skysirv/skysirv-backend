@@ -93,13 +93,15 @@ export async function getUserWatchlist(userId: string) {
       "w.created_at",
       "w.last_checked_at",
       (eb) => eb("f.price", "/", 100).as("latest_price"),
+      "f.airline as latest_airline",
+      "f.flight_number as latest_flight_number",
+      "f.captured_at as latest_captured_at",
       (eb) =>
         eb
           .selectFrom("flight_price_history as avgf")
           .select((eb2) => eb2.fn.avg("avgf.price").as("avg_price"))
           .whereRef("avgf.route_hash", "=", "w.route_hash")
           .as("avg_price"),
-      "f.currency as latest_currency",
       "f.currency as latest_currency",
       "f.booking_signal as booking_signal",
       "f.volatility_index as volatility_index",
