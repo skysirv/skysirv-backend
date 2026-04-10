@@ -78,10 +78,16 @@ export async function getUserWatchlist(userId: string) {
   return db
     .selectFrom("watchlist as w")
     .leftJoin(latestPerRoute, "latest_per_route.route_hash", "w.route_hash")
-    .leftJoin("flight_price_history as f", (join) =>
-      join
-        .onRef("f.route_hash", "=", "w.route_hash")
-        .onRef("f.captured_at", "=", "latest_per_route.latest_captured_at")
+    .leftJoin(
+      db
+        .selectFrom("flight_price_history as f")
+        .selectAll()
+        .distinctOn(["f.route_hash"])
+        .orderBy("f.route_hash")
+        .orderBy("f.captured_at", "desc")
+        .as("f"),
+      (join) =>
+        join.onRef("f.route_hash", "=", "w.route_hash")
     )
     .select([
       "w.id",
