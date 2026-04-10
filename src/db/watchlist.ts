@@ -157,7 +157,8 @@ export async function getUserWatchlist(userId: string) {
       --------------------------------
       Recommended flights
       Latest valid capture only
-      Sorted by price ascending
+      Deduped by airline + flight number + price
+      Sorted by cheapest visible options
       Limited to top 8 so frontend can
       intelligently choose its final 4
       --------------------------------
@@ -165,30 +166,51 @@ export async function getUserWatchlist(userId: string) {
 
       (eb) =>
         eb
-          .selectFrom(validFlightHistory)
+          .selectFrom((sub) =>
+            sub
+              .selectFrom(validFlightHistory)
+              .select([
+                "valid_flight_history.airline",
+                "valid_flight_history.flight_number",
+                "valid_flight_history.price",
+                "valid_flight_history.currency",
+                "valid_flight_history.captured_at",
+                "valid_flight_history.booking_signal",
+                "valid_flight_history.volatility_index",
+              ])
+              .distinctOn([
+                "valid_flight_history.airline",
+                "valid_flight_history.flight_number",
+                "valid_flight_history.price",
+              ])
+              .whereRef("valid_flight_history.route_hash", "=", "w.route_hash")
+              .whereRef(
+                "valid_flight_history.captured_at",
+                "=",
+                "latest_per_route.latest_captured_at"
+              )
+              .orderBy("valid_flight_history.airline")
+              .orderBy("valid_flight_history.flight_number")
+              .orderBy("valid_flight_history.price", "asc")
+              .as("deduped_recommended_flights")
+          )
           .select((eb2) =>
             eb2.fn
               .coalesce(
                 eb2.fn.jsonAgg(
                   sql`json_build_object(
-                    'airline', valid_flight_history.airline,
-                    'flightNumber', valid_flight_history.flight_number,
-                    'price', valid_flight_history.price / 100.0,
-                    'currency', valid_flight_history.currency,
-                    'capturedAt', valid_flight_history.captured_at,
-                    'bookingSignal', valid_flight_history.booking_signal,
-                    'volatilityIndex', valid_flight_history.volatility_index
-                  ) ORDER BY valid_flight_history.price ASC`
+                    'airline', deduped_recommended_flights.airline,
+                    'flightNumber', deduped_recommended_flights.flight_number,
+                    'price', deduped_recommended_flights.price / 100.0,
+                    'currency', deduped_recommended_flights.currency,
+                    'capturedAt', deduped_recommended_flights.captured_at,
+                    'bookingSignal', deduped_recommended_flights.booking_signal,
+                    'volatilityIndex', deduped_recommended_flights.volatility_index
+                  ) ORDER BY deduped_recommended_flights.price ASC`
                 ),
                 sql`'[]'::json`
               )
               .as("recommended_flights")
-          )
-          .whereRef("valid_flight_history.route_hash", "=", "w.route_hash")
-          .whereRef(
-            "valid_flight_history.captured_at",
-            "=",
-            "latest_per_route.latest_captured_at"
           )
           .limit(8)
           .as("recommended_flights"),
