@@ -163,9 +163,6 @@ export class AmadeusAdapter implements FlightProvider {
     return true
   }
 
-  /**
-   * Fetch OAuth token from Amadeus
-   */
   private async getAccessToken(): Promise<string> {
     if (this.accessToken && Date.now() < this.tokenExpiry) {
       return this.accessToken
@@ -205,9 +202,6 @@ export class AmadeusAdapter implements FlightProvider {
     return this.accessToken as string
   }
 
-  /**
-   * Search flights using Amadeus Flight Offers API
-   */
   async searchFlights(params: FlightSearchParams): Promise<FlightResult[]> {
     const token = await this.getAccessToken()
 
