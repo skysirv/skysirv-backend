@@ -1,4 +1,5 @@
 import { db } from "./index.js"
+import { sql } from "kysely"
 import { createHash } from "crypto"
 
 function generateRouteHash(
@@ -58,7 +59,7 @@ export async function addToWatchlist(
       departure_date: new Date(departureDate),
       is_active: true,
       created_at: new Date(),
-      last_checked_at: null
+      last_checked_at: null,
     })
     .returningAll()
     .executeTakeFirstOrThrow()
@@ -96,6 +97,25 @@ export async function getUserWatchlist(userId: string) {
       "f.airline as latest_airline",
       "f.flight_number as latest_flight_number",
       "f.captured_at as latest_captured_at",
+      (eb) =>
+        eb
+          .selectFrom("flight_price_history as rf")
+          .select((eb2) =>
+            eb2.fn
+              .jsonAgg(
+                sql`json_build_object(
+                  'airline', rf.airline,
+                  'flightNumber', rf.flight_number,
+                  'price', rf.price / 100.0,
+                  'currency', rf.currency,
+                  'capturedAt', rf.captured_at
+                )`
+              )
+              .as("recommended_flights")
+          )
+          .whereRef("rf.route_hash", "=", "w.route_hash")
+          .whereRef("rf.captured_at", "=", "latest_per_route.latest_captured_at")
+          .as("recommended_flights"),
       (eb) =>
         eb
           .selectFrom("flight_price_history as avgf")

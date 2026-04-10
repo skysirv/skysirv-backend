@@ -82,8 +82,9 @@ export async function monitorRoute(
   --------------------------------
   */
 
+  const capturedAt = new Date()
+
   for (const p of filteredPrices) {
-    const capturedAt = new Date()
     const priceInCents = Math.round(p.price * 100)
 
     console.log("💾 Inserting price history:", {
