@@ -68,12 +68,9 @@ function isValidFlightNumber(value: string | null | undefined): boolean {
   const flightNumber = normalizeFlightNumber(value)
 
   if (!flightNumber) return false
-  if (flightNumber.length < 2) return false
+  if (flightNumber.length < 1) return false
 
-  const hasLetter = /[A-Z]/.test(flightNumber)
-  const hasDigit = /\d/.test(flightNumber)
-
-  return hasLetter && hasDigit
+  return /^[A-Z0-9-]{1,10}$/.test(flightNumber)
 }
 
 function isValidPrice(value: number): boolean {
@@ -154,10 +151,7 @@ function filterOutlierPrices(prices: NormalizedPrice[]): NormalizedPrice[] {
   const cheapest = sorted[0].price
 
   const maxAllowed = cheapest * 2.2
-  const minAllowed =
-    median > 0
-      ? Math.max(50, median * 0.5)
-      : 50
+  const minAllowed = median > 0 ? Math.max(50, median * 0.5) : 50
 
   const filtered = sorted.filter((p) => {
     if (p.price > maxAllowed) {
@@ -292,12 +286,6 @@ export async function monitorRoute(
       })
       .execute()
 
-    /*
-    --------------------------------
-    Load history for intelligence
-    --------------------------------
-    */
-
     const history = await db
       .selectFrom("flight_price_history")
       .select(["price", "captured_at"])
@@ -329,12 +317,6 @@ export async function monitorRoute(
         .where("captured_at", "=", capturedAt)
         .execute()
 
-      /*
-      --------------------------------
-      Update route intelligence cache
-      --------------------------------
-      */
-
       await db
         .insertInto("route_intelligence")
         .values({
@@ -357,12 +339,6 @@ export async function monitorRoute(
           })
         )
         .execute()
-
-      /*
-      --------------------------------
-      Historical deal detection
-      --------------------------------
-      */
 
       const insight = await computePriceInsight(
         db,
