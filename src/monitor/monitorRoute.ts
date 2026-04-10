@@ -24,6 +24,170 @@ export type PriceProvider = (
   route: MonitorRouteInput
 ) => Promise<NormalizedPrice[]>
 
+function normalizeText(value: string | null | undefined): string {
+  return String(value ?? "").trim()
+}
+
+function normalizeAirlineCode(value: string | null | undefined): string {
+  return normalizeText(value).toUpperCase()
+}
+
+function normalizeFlightNumber(value: string | null | undefined): string {
+  return normalizeText(value).toUpperCase().replace(/\s+/g, "")
+}
+
+function normalizeCurrency(value: string | null | undefined): string {
+  const currency = normalizeText(value).toUpperCase()
+  return currency || "USD"
+}
+
+function isUnknownAirline(value: string | null | undefined): boolean {
+  const airline = normalizeAirlineCode(value)
+
+  if (!airline) return true
+
+  const blocked = new Set([
+    "UNKNOWN",
+    "UNKNOWN CARRIER",
+    "UNKNOWN AIRLINE",
+    "N/A",
+    "NA",
+    "NULL",
+    "UNDEFINED",
+    "TBD",
+    "XX",
+    "YY",
+    "--",
+    "?",
+  ])
+
+  return blocked.has(airline)
+}
+
+function isValidFlightNumber(value: string | null | undefined): boolean {
+  const flightNumber = normalizeFlightNumber(value)
+
+  if (!flightNumber) return false
+  if (flightNumber.length < 2) return false
+
+  const hasLetter = /[A-Z]/.test(flightNumber)
+  const hasDigit = /\d/.test(flightNumber)
+
+  return hasLetter && hasDigit
+}
+
+function isValidPrice(value: number): boolean {
+  return Number.isFinite(value) && value >= 50
+}
+
+function getMedian(values: number[]): number {
+  if (values.length === 0) return 0
+
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle]
+}
+
+function sanitizePrices(prices: NormalizedPrice[]): NormalizedPrice[] {
+  const cleaned: NormalizedPrice[] = []
+
+  for (const raw of prices) {
+    const airline = normalizeAirlineCode(raw.airline)
+    const flightNumber = normalizeFlightNumber(raw.flightNumber)
+    const currency = normalizeCurrency(raw.currency)
+    const price = Number(raw.price)
+
+    if (isUnknownAirline(airline)) {
+      console.log("🚫 Skipping fare: unknown airline", raw)
+      continue
+    }
+
+    if (!isValidFlightNumber(flightNumber)) {
+      console.log("🚫 Skipping fare: invalid flight number", raw)
+      continue
+    }
+
+    if (!isValidPrice(price)) {
+      console.log("🚫 Skipping fare: invalid or suspiciously low base price", raw)
+      continue
+    }
+
+    cleaned.push({
+      airline,
+      flightNumber,
+      price: Number(price.toFixed(2)),
+      currency,
+    })
+  }
+
+  return cleaned
+}
+
+function dedupePrices(prices: NormalizedPrice[]): NormalizedPrice[] {
+  const uniqueMap = new Map<string, NormalizedPrice>()
+
+  for (const p of prices) {
+    const key = [
+      normalizeAirlineCode(p.airline),
+      normalizeFlightNumber(p.flightNumber),
+      normalizeCurrency(p.currency),
+      Number(p.price.toFixed(2)),
+    ].join("|")
+
+    if (!uniqueMap.has(key)) {
+      uniqueMap.set(key, p)
+    }
+  }
+
+  return Array.from(uniqueMap.values())
+}
+
+function filterOutlierPrices(prices: NormalizedPrice[]): NormalizedPrice[] {
+  if (prices.length === 0) return []
+
+  const sorted = [...prices].sort((a, b) => a.price - b.price)
+  const priceValues = sorted.map((p) => p.price)
+  const median = getMedian(priceValues)
+  const cheapest = sorted[0].price
+
+  const maxAllowed = cheapest * 2.2
+  const minAllowed =
+    median > 0
+      ? Math.max(50, median * 0.5)
+      : 50
+
+  const filtered = sorted.filter((p) => {
+    if (p.price > maxAllowed) {
+      console.log("🚫 Skipping fare: above max allowed", {
+        fare: p,
+        maxAllowed,
+      })
+      return false
+    }
+
+    if (p.price < minAllowed) {
+      console.log("🚫 Skipping fare: below min allowed", {
+        fare: p,
+        minAllowed,
+        median,
+      })
+      return false
+    }
+
+    return true
+  })
+
+  if (filtered.length > 0) {
+    return filtered
+  }
+
+  console.log("⚠️ Outlier filter removed everything — falling back to sanitized list")
+  return sorted
+}
+
 export async function monitorRoute(
   db: Kysely<DB>,
   queue: Queue,
@@ -43,42 +207,54 @@ export async function monitorRoute(
 
   /*
   --------------------------------
-  STEP 1 — Deduplicate identical fares
+  STEP 1 — Sanitize raw provider data
+  Remove junk carriers / invalid fares
   --------------------------------
   */
 
-  const uniqueMap = new Map<string, NormalizedPrice>()
+  const sanitizedPrices = sanitizePrices(prices)
 
-  for (const p of prices) {
-    const key = `${p.airline}-${p.flightNumber}-${p.price}`
+  console.log("🧼 Sanitized fares:", sanitizedPrices.length)
 
-    if (!uniqueMap.has(key)) {
-      uniqueMap.set(key, p)
-    }
+  if (sanitizedPrices.length === 0) {
+    console.log("⚠️ No usable fares after sanitizing")
+    return
   }
 
-  const uniquePrices = Array.from(uniqueMap.values())
+  /*
+  --------------------------------
+  STEP 2 — Deduplicate identical fares
+  --------------------------------
+  */
+
+  const uniquePrices = dedupePrices(sanitizedPrices)
 
   console.log("✂️ Unique fares:", uniquePrices.length)
 
+  if (uniquePrices.length === 0) {
+    console.log("⚠️ No usable fares after dedupe")
+    return
+  }
+
   /*
   --------------------------------
-  STEP 2 — Smart fare filtering
-  Remove business / premium fares
+  STEP 3 — Smart fare filtering
+  Remove suspiciously low / overly high fares
   --------------------------------
   */
 
-  const sorted = [...uniquePrices].sort((a, b) => a.price - b.price)
-
-  const cheapest = sorted[0].price
-  const maxAllowed = cheapest * 2.2
-  const filteredPrices = sorted.filter((p) => p.price <= maxAllowed)
+  const filteredPrices = filterOutlierPrices(uniquePrices)
 
   console.log("🧹 Filtered fares:", filteredPrices.length)
 
+  if (filteredPrices.length === 0) {
+    console.log("⚠️ No usable fares after filtering")
+    return
+  }
+
   /*
   --------------------------------
-  STEP 3 — Process fares
+  STEP 4 — Process fares
   --------------------------------
   */
 
@@ -88,6 +264,8 @@ export async function monitorRoute(
     const priceInCents = Math.round(p.price * 100)
 
     console.log("💾 Inserting price history:", {
+      airline: p.airline,
+      flightNumber: p.flightNumber,
       priceDollars: p.price,
       priceInCents,
       currency: p.currency,
