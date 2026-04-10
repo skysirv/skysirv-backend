@@ -6,6 +6,7 @@ import { DuffelAdapter } from "../providers/duffelAdapter.js"
 import { env } from "../config/env.js"
 import { sendAlertEmail } from "../services/notificationService.js"
 import { AmadeusAdapter } from "../providers/amadeusAdapter.js"
+import type { FlightResult } from "../providers/types.js"
 
 function parseBool(v: unknown): boolean {
   if (typeof v !== "string") return false
@@ -46,6 +47,176 @@ function applySubscriptionGovernor(
   if (plan === "pro") return Math.max(dynamicMs, 2 * 60 * 60 * 1000)
 
   return Math.max(dynamicMs, 8 * 60 * 60 * 1000)
+}
+
+/*
+--------------------------------
+Itinerary Scoring + Deduping
+--------------------------------
+*/
+
+function normalizeText(value: string | null | undefined): string {
+  return String(value ?? "").trim()
+}
+
+function normalizeCarrier(value: string | null | undefined): string {
+  return normalizeText(value).toUpperCase()
+}
+
+function normalizeFlightNumber(value: string | null | undefined): string {
+  return normalizeText(value).toUpperCase().replace(/\s+/g, "")
+}
+
+function getMinutesBetween(
+  start: string | null | undefined,
+  end: string | null | undefined
+): number | null {
+  if (!start || !end) return null
+
+  const startMs = new Date(start).getTime()
+  const endMs = new Date(end).getTime()
+
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null
+  if (endMs <= startMs) return null
+
+  return Math.round((endMs - startMs) / 60000)
+}
+
+function computeDurationMinutes(result: FlightResult): number | null {
+  if (
+    result.totalDurationMinutes != null &&
+    Number.isFinite(result.totalDurationMinutes)
+  ) {
+    return Number(result.totalDurationMinutes)
+  }
+
+  return getMinutesBetween(result.departureTime, result.arrivalTime)
+}
+
+function buildSegmentPathKey(result: FlightResult): string {
+  const segments = result.segments ?? []
+
+  if (segments.length === 0) {
+    return [
+      normalizeCarrier(result.operatingCarrier || result.marketingCarrier || result.airline),
+      normalizeFlightNumber(result.flightNumber),
+      normalizeText(result.departureTime),
+      normalizeText(result.arrivalTime),
+    ].join("|")
+  }
+
+  return segments
+    .map((segment) =>
+      [
+        normalizeText(segment.origin).toUpperCase(),
+        normalizeText(segment.destination).toUpperCase(),
+        normalizeCarrier(segment.operatingCarrier || segment.marketingCarrier),
+        normalizeFlightNumber(
+          segment.operatingFlightNumber || segment.marketingFlightNumber
+        ),
+      ].join(":")
+    )
+    .join(">")
+}
+
+function buildItineraryKey(result: FlightResult): string {
+  if (result.itineraryKey && normalizeText(result.itineraryKey)) {
+    return normalizeText(result.itineraryKey)
+  }
+
+  return buildSegmentPathKey(result)
+}
+
+function getStopCount(result: FlightResult): number {
+  if (result.stopCount != null && Number.isFinite(result.stopCount)) {
+    return Math.max(0, Number(result.stopCount))
+  }
+
+  const segments = result.segments ?? []
+  if (segments.length > 0) {
+    return Math.max(0, segments.length - 1)
+  }
+
+  return 0
+}
+
+function getPrimaryCarrier(result: FlightResult): string {
+  return normalizeCarrier(
+    result.operatingCarrier ||
+    result.marketingCarrier ||
+    result.airline
+  )
+}
+
+function scoreFlight(result: FlightResult): number {
+  const price = Number(result.price)
+  const stopCount = getStopCount(result)
+  const durationMinutes = computeDurationMinutes(result)
+
+  let score = 0
+
+  if (Number.isFinite(price) && price > 0) {
+    score += price
+  } else {
+    score += 999999
+  }
+
+  score += stopCount * 180
+
+  if (durationMinutes != null) {
+    score += durationMinutes * 0.35
+  } else {
+    score += 240
+  }
+
+  return score
+}
+
+function collapseDuplicateItineraries(results: FlightResult[]): FlightResult[] {
+  const bestByItinerary = new Map<string, FlightResult>()
+
+  for (const result of results) {
+    const key = buildItineraryKey(result)
+    const existing = bestByItinerary.get(key)
+
+    if (!existing) {
+      bestByItinerary.set(key, result)
+      continue
+    }
+
+    const existingScore = scoreFlight(existing)
+    const incomingScore = scoreFlight(result)
+
+    if (incomingScore < existingScore) {
+      bestByItinerary.set(key, result)
+    }
+  }
+
+  return Array.from(bestByItinerary.values())
+}
+
+function rankFlights(results: FlightResult[]): FlightResult[] {
+  return [...results].sort((a, b) => {
+    const scoreDiff = scoreFlight(a) - scoreFlight(b)
+    if (scoreDiff !== 0) return scoreDiff
+
+    const priceDiff = Number(a.price) - Number(b.price)
+    if (priceDiff !== 0) return priceDiff
+
+    const stopDiff = getStopCount(a) - getStopCount(b)
+    if (stopDiff !== 0) return stopDiff
+
+    const durationA = computeDurationMinutes(a) ?? Number.MAX_SAFE_INTEGER
+    const durationB = computeDurationMinutes(b) ?? Number.MAX_SAFE_INTEGER
+
+    return durationA - durationB
+  })
+}
+
+function selectBestFlights(results: FlightResult[], limit = 12): FlightResult[] {
+  const collapsed = collapseDuplicateItineraries(results)
+  const ranked = rankFlights(collapsed)
+  return ranked.slice(0, limit)
 }
 
 export function startWorkers() {
@@ -119,7 +290,7 @@ export function startWorkers() {
             )
           )
 
-          const results = providerResults.flatMap((result) => {
+          const rawResults = providerResults.flatMap((result) => {
             if (result.status === "fulfilled") {
               return result.value
             }
@@ -128,11 +299,15 @@ export function startWorkers() {
             return []
           })
 
-          console.log("📦 Prices returned:", results.length)
+          console.log("📦 Raw provider results:", rawResults.length)
 
-          return results.map((r) => ({
-            airline: r.airline,
-            flightNumber: r.flightNumber,
+          const selectedResults = selectBestFlights(rawResults, 12)
+
+          console.log("🏆 Selected best flights:", selectedResults.length)
+
+          return selectedResults.map((r) => ({
+            airline: getPrimaryCarrier(r) || r.airline,
+            flightNumber: normalizeFlightNumber(r.flightNumber) || "0",
             price: r.price,
             currency: r.currency,
           }))
@@ -352,5 +527,5 @@ export function startWorkers() {
     console.error(`🔥 Email job failed: ${job?.name} (${job?.id})`, err)
   })
 
-  console.log("🚀 Monitor + Notification workers started (Duffel)")
+  console.log("🚀 Monitor + Notification workers started")
 }
