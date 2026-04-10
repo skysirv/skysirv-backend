@@ -66,29 +66,74 @@ export async function addToWatchlist(
 }
 
 export async function getUserWatchlist(userId: string) {
+  /*
+  --------------------------------
+  Valid flight history only
+  Excludes junk rows from card output
+  --------------------------------
+  */
+
+  const validFlightHistory = db
+    .selectFrom("flight_price_history as fph")
+    .selectAll()
+    .where("fph.airline", "is not", null)
+    .where(sql`trim(fph.airline)`, "!=", "")
+    .where(sql`upper(trim(fph.airline))`, "not in", [
+      "UNKNOWN",
+      "UNKNOWN CARRIER",
+      "UNKNOWN AIRLINE",
+      "N/A",
+      "NA",
+      "NULL",
+      "UNDEFINED",
+      "TBD",
+      "XX",
+      "YY",
+      "--",
+      "?",
+    ])
+    .where("fph.flight_number", "is not", null)
+    .where(sql`trim(fph.flight_number)`, "!=", "")
+    .where("fph.price", "is not", null)
+    .where("fph.price", ">=", 5000)
+    .as("valid_flight_history")
+
+  /*
+  --------------------------------
+  Latest valid capture timestamp per route
+  --------------------------------
+  */
+
   const latestPerRoute = db
-    .selectFrom("flight_price_history")
-    .select(({ fn }) => [
-      "route_hash",
+    .selectFrom(validFlightHistory)
+    .select(({ fn, ref }) => [
+      ref("route_hash").as("route_hash"),
       fn.max("captured_at").as("latest_captured_at"),
     ])
     .groupBy("route_hash")
     .as("latest_per_route")
 
+  /*
+  --------------------------------
+  Best latest row per route
+  Uses latest valid capture set only,
+  then prefers cheapest fare in that set
+  --------------------------------
+  */
+
+  const latestBestFare = db
+    .selectFrom(validFlightHistory)
+    .selectAll()
+    .distinctOn(["route_hash"])
+    .orderBy("route_hash")
+    .orderBy("captured_at", "desc")
+    .orderBy("price", "asc")
+    .as("latest_best_fare")
+
   return db
     .selectFrom("watchlist as w")
     .leftJoin(latestPerRoute, "latest_per_route.route_hash", "w.route_hash")
-    .leftJoin(
-      db
-        .selectFrom("flight_price_history as f")
-        .selectAll()
-        .distinctOn(["f.route_hash"])
-        .orderBy("f.route_hash")
-        .orderBy("f.captured_at", "desc")
-        .as("f"),
-      (join) =>
-        join.onRef("f.route_hash", "=", "w.route_hash")
-    )
+    .leftJoin(latestBestFare, "latest_best_fare.route_hash", "w.route_hash")
     .select([
       "w.id",
       "w.user_id",
@@ -99,38 +144,68 @@ export async function getUserWatchlist(userId: string) {
       "w.is_active",
       "w.created_at",
       "w.last_checked_at",
-      (eb) => eb("f.price", "/", 100).as("latest_price"),
-      "f.airline as latest_airline",
-      "f.flight_number as latest_flight_number",
-      "f.captured_at as latest_captured_at",
+
+      (eb) => eb("latest_best_fare.price", "/", 100).as("latest_price"),
+      "latest_best_fare.airline as latest_airline",
+      "latest_best_fare.flight_number as latest_flight_number",
+      "latest_best_fare.captured_at as latest_captured_at",
+      "latest_best_fare.currency as latest_currency",
+      "latest_best_fare.booking_signal as booking_signal",
+      "latest_best_fare.volatility_index as volatility_index",
+
+      /*
+      --------------------------------
+      Recommended flights
+      Latest valid capture only
+      Sorted by price ascending
+      Limited to top 8 so frontend can
+      intelligently choose its final 4
+      --------------------------------
+      */
+
       (eb) =>
         eb
-          .selectFrom("flight_price_history as rf")
+          .selectFrom(validFlightHistory)
           .select((eb2) =>
             eb2.fn
-              .jsonAgg(
-                sql`json_build_object(
-                  'airline', rf.airline,
-                  'flightNumber', rf.flight_number,
-                  'price', rf.price / 100.0,
-                  'currency', rf.currency,
-                  'capturedAt', rf.captured_at
-                )`
+              .coalesce(
+                eb2.fn.jsonAgg(
+                  sql`json_build_object(
+                    'airline', valid_flight_history.airline,
+                    'flightNumber', valid_flight_history.flight_number,
+                    'price', valid_flight_history.price / 100.0,
+                    'currency', valid_flight_history.currency,
+                    'capturedAt', valid_flight_history.captured_at,
+                    'bookingSignal', valid_flight_history.booking_signal,
+                    'volatilityIndex', valid_flight_history.volatility_index
+                  ) ORDER BY valid_flight_history.price ASC`
+                ),
+                sql`'[]'::json`
               )
               .as("recommended_flights")
           )
-          .whereRef("rf.route_hash", "=", "w.route_hash")
-          .whereRef("rf.captured_at", "=", "latest_per_route.latest_captured_at")
+          .whereRef("valid_flight_history.route_hash", "=", "w.route_hash")
+          .whereRef(
+            "valid_flight_history.captured_at",
+            "=",
+            "latest_per_route.latest_captured_at"
+          )
+          .limit(8)
           .as("recommended_flights"),
+
+      /*
+      --------------------------------
+      Average route price
+      Based on valid history only
+      --------------------------------
+      */
+
       (eb) =>
         eb
-          .selectFrom("flight_price_history as avgf")
-          .select((eb2) => eb2.fn.avg("avgf.price").as("avg_price"))
-          .whereRef("avgf.route_hash", "=", "w.route_hash")
+          .selectFrom(validFlightHistory)
+          .select((eb2) => eb2.fn.avg("valid_flight_history.price").as("avg_price"))
+          .whereRef("valid_flight_history.route_hash", "=", "w.route_hash")
           .as("avg_price"),
-      "f.currency as latest_currency",
-      "f.booking_signal as booking_signal",
-      "f.volatility_index as volatility_index",
     ])
     .where("w.user_id", "=", userId)
     .orderBy("w.created_at", "desc")
