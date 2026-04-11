@@ -180,7 +180,6 @@ export async function getUserWatchlist(userId: string) {
               ])
               .distinctOn([
                 "valid_flight_history.airline",
-                "valid_flight_history.price",
               ])
               .whereRef("valid_flight_history.route_hash", "=", "w.route_hash")
               .whereRef(
