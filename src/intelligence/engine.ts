@@ -14,7 +14,7 @@ export interface IntelligenceResponse {
 }
 
 export class IntelligenceEngine {
-  constructor(private provider: FlightProvider) {}
+  constructor(private provider: FlightProvider) { }
 
   async getIntelligence(
     route: string,
@@ -67,19 +67,19 @@ export class IntelligenceEngine {
     // Booking Signal
     let bookingSignal = "Fair Price"
 
-    if (positioningRaw <= -10) {
+    if (positioningRaw <= -12) {
       bookingSignal = "Strong Buy"
-    } else if (positioningRaw <= -3) {
+    } else if (positioningRaw <= -5) {
       bookingSignal = "Favorable Window"
-    } else if (positioningRaw > 5) {
+    } else if (positioningRaw >= 12) {
       bookingSignal = "Overpriced"
     }
 
-    if (volatilityIndex === "High" && positioningRaw <= -3) {
+    if (volatilityIndex === "High" && positioningRaw <= -5) {
       bookingSignal = "Act Quickly"
     }
 
-    if (volatilityIndex === "High" && positioningRaw > 5) {
+    if (volatilityIndex === "High" && positioningRaw >= 12) {
       bookingSignal = "Monitor Closely"
     }
 
