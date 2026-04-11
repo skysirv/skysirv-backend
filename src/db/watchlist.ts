@@ -180,7 +180,6 @@ export async function getUserWatchlist(userId: string) {
               ])
               .distinctOn([
                 "valid_flight_history.airline",
-                "valid_flight_history.flight_number",
                 "valid_flight_history.price",
               ])
               .whereRef("valid_flight_history.route_hash", "=", "w.route_hash")
@@ -190,8 +189,8 @@ export async function getUserWatchlist(userId: string) {
                 "latest_per_route.latest_captured_at"
               )
               .orderBy("valid_flight_history.airline")
-              .orderBy("valid_flight_history.flight_number")
               .orderBy("valid_flight_history.price", "asc")
+              .orderBy("valid_flight_history.captured_at", "desc")
               .as("deduped_recommended_flights")
           )
           .select((eb2) =>
