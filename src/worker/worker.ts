@@ -192,6 +192,17 @@ function scoreFlight(result: FlightResult): number {
     score += 240
   }
 
+  const carrier = getPrimaryCarrier(result)
+
+  const majorCarriers = [
+    "AA", "DL", "UA", "B6", "AS",
+    "LH", "AF", "BA", "EK", "QR"
+  ]
+
+  if (majorCarriers.includes(carrier)) {
+    score -= 50
+  }
+
   return score
 }
 
