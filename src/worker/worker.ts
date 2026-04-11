@@ -148,10 +148,29 @@ function getPrimaryCarrier(result: FlightResult): string {
   )
 }
 
+function getDistinctItineraryCarrierCount(result: FlightResult): number {
+  const segments = result.segments ?? []
+
+  if (segments.length === 0) {
+    return getPrimaryCarrier(result) ? 1 : 0
+  }
+
+  const carriers = new Set(
+    segments
+      .map((segment) =>
+        normalizeCarrier(segment.operatingCarrier || segment.marketingCarrier)
+      )
+      .filter(Boolean)
+  )
+
+  return carriers.size || (getPrimaryCarrier(result) ? 1 : 0)
+}
+
 function scoreFlight(result: FlightResult): number {
   const price = Number(result.price)
   const stopCount = getStopCount(result)
   const durationMinutes = computeDurationMinutes(result)
+  const distinctCarrierCount = getDistinctItineraryCarrierCount(result)
 
   let score = 0
 
@@ -162,6 +181,10 @@ function scoreFlight(result: FlightResult): number {
   }
 
   score += stopCount * 180
+
+  if (distinctCarrierCount > 1) {
+    score += (distinctCarrierCount - 1) * 220
+  }
 
   if (durationMinutes != null) {
     score += durationMinutes * 0.35
