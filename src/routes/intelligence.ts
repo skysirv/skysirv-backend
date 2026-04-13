@@ -135,16 +135,66 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
             .execute()
           : []
 
-      const airportNodes = Array.from(
+      const airportDirectory: Record<
+        string,
+        { lat: number; lng: number; name: string; city: string; country: string }
+      > = {
+        LAX: {
+          lat: 33.9416,
+          lng: -118.4085,
+          name: "Los Angeles International Airport",
+          city: "Los Angeles",
+          country: "United States",
+        },
+        MIA: {
+          lat: 25.7959,
+          lng: -80.287,
+          name: "Miami International Airport",
+          city: "Miami",
+          country: "United States",
+        },
+        DFW: {
+          lat: 32.8998,
+          lng: -97.0403,
+          name: "Dallas/Fort Worth International Airport",
+          city: "Dallas-Fort Worth",
+          country: "United States",
+        },
+      }
+
+      const airportCodes = Array.from(
         new Set(
-          segments.flatMap((segment: any) => [
-            segment.departure_airport_code,
-            segment.arrival_airport_code,
-          ]).filter(Boolean)
+          segments
+            .flatMap((segment: any) => [
+              segment.departure_airport_code,
+              segment.arrival_airport_code,
+            ])
+            .filter((code: any) => typeof code === "string" && code.length > 0)
         )
-      ).map((airportCode) => ({
-        airportCode,
-      }))
+      ) as string[]
+
+      const airportNodes = airportCodes.map((airportCode) => {
+        const airportMeta = airportDirectory[airportCode] ?? null
+
+        return {
+          airportCode,
+          lat: airportMeta?.lat,
+          lng: airportMeta?.lng,
+          name: airportMeta?.name,
+          city: airportMeta?.city,
+          country: airportMeta?.country,
+          visits: segments.filter(
+            (segment: any) =>
+              segment.departure_airport_code === airportCode ||
+              segment.arrival_airport_code === airportCode
+          ).length,
+          layoverHours: 0,
+          loungeHours: 0,
+          flights: segments.filter(
+            (segment: any) => segment.departure_airport_code === airportCode
+          ).length,
+        }
+      })
 
       const routeArcs = segments
         .filter(
