@@ -124,6 +124,7 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
 
             const completedAt = new Date()
             const tripId = crypto.randomUUID()
+            const tripSegmentId = crypto.randomUUID()
 
             const subscription = await app.db
                 .selectFrom("subscriptions")
@@ -169,6 +170,26 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
                 })
                 .execute()
 
+            await app.db
+                .insertInto("trip_segments")
+                .values({
+                    id: tripSegmentId,
+                    trip_id: tripId,
+                    user_id: user.id,
+                    segment_order: 1,
+                    airline_code: existing.airline ?? null,
+                    flight_number: existing.flight_number ?? null,
+                    departure_airport_code: existing.origin,
+                    arrival_airport_code: existing.destination,
+                    scheduled_departure_at: existing.departure_date ?? completedAt,
+                    scheduled_arrival_at: null,
+                    status: "completed",
+                    source: "saved_flight_completion",
+                    created_at: completedAt,
+                    updated_at: completedAt,
+                })
+                .execute()
+
             if (isProOrEnterprise) {
                 const wrappedYear =
                     existing.departure_date != null
@@ -209,6 +230,7 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
                                     timingGrade: "—",
                                 },
                                 tripIds: [tripId],
+                                segmentIds: [tripSegmentId],
                             }),
                             generated_at: completedAt,
                             created_at: completedAt,
@@ -234,6 +256,14 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
                         ? currentTripIds
                         : [...currentTripIds, tripId]
 
+                    const currentSegmentIds = Array.isArray(parsedPayload?.segmentIds)
+                        ? parsedPayload.segmentIds
+                        : []
+
+                    const nextSegmentIds = currentSegmentIds.includes(tripSegmentId)
+                        ? currentSegmentIds
+                        : [...currentSegmentIds, tripSegmentId]
+
                     await app.db
                         .updateTable("user_intelligence_wrapped")
                         .set({
@@ -249,6 +279,7 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
                                         timingGrade: "—",
                                     },
                                 tripIds: nextTripIds,
+                                segmentIds: nextSegmentIds,
                             }),
                             updated_at: completedAt,
                         })
@@ -257,8 +288,15 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
                 }
 
                 request.log.info(
-                    { userId: user.id, planId, savedFlightId: id, tripId, wrappedYear },
-                    "Completed saved flight updated wrapped draft"
+                    {
+                        userId: user.id,
+                        planId,
+                        savedFlightId: id,
+                        tripId,
+                        tripSegmentId,
+                        wrappedYear,
+                    },
+                    "Completed saved flight updated wrapped draft with trip segment"
                 )
             }
 
