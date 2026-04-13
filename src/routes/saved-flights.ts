@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify"
 import { z } from "zod"
+import crypto from "crypto"
 
 const createSavedFlightSchema = z.object({
     origin: z.string().min(3).max(8),
@@ -122,6 +123,7 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
             }
 
             const completedAt = new Date()
+            const tripId = crypto.randomUUID()
 
             const updated = await app.db
                 .updateTable("saved_flights")
@@ -137,6 +139,7 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
             await app.db
                 .insertInto("trips")
                 .values({
+                    id: tripId,
                     user_id: user.id,
                     title: `${existing.origin} → ${existing.destination}`,
                     booking_reference: null,
