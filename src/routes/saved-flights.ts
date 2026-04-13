@@ -115,16 +115,41 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
                 })
             }
 
+            if (existing.status === "completed") {
+                return reply.status(409).send({
+                    error: "Saved flight already completed",
+                })
+            }
+
+            const completedAt = new Date()
+
             const updated = await app.db
                 .updateTable("saved_flights")
                 .set({
                     status: "completed",
-                    completed_at: new Date(),
+                    completed_at: completedAt,
                 })
                 .where("id", "=", id)
                 .where("user_id", "=", user.id)
                 .returningAll()
                 .executeTakeFirstOrThrow()
+
+            await app.db
+                .insertInto("trips")
+                .values({
+                    user_id: user.id,
+                    title: `${existing.origin} → ${existing.destination}`,
+                    booking_reference: null,
+                    trip_type: "one_way",
+                    started_at: existing.departure_date ?? completedAt,
+                    ended_at: existing.departure_date ?? completedAt,
+                    origin_airport_code: existing.origin,
+                    destination_airport_code: existing.destination,
+                    status: "completed",
+                    created_at: completedAt,
+                    updated_at: completedAt,
+                })
+                .execute()
 
             return reply.send(updated)
         }

@@ -99,7 +99,7 @@ export interface RouteIntelligenceTable {
 }
 
 export interface TripsTable {
-  id: string
+  id?: string
   user_id: string
   title: string | null
   booking_reference: string | null
@@ -109,8 +109,8 @@ export interface TripsTable {
   origin_airport_code: string | null
   destination_airport_code: string | null
   status: string
-  created_at: Date
-  updated_at: Date
+  created_at?: Date
+  updated_at?: Date
 }
 
 export interface TripSegmentsTable {
