@@ -174,6 +174,21 @@ export interface UserIntelligenceWrappedTable {
   updated_at: Date
 }
 
+export interface SavedFlightsTable {
+  id?: string
+  user_id: string
+  origin: string
+  destination: string
+  departure_date: Date | null
+  airline: string | null
+  flight_number: string | null
+  price: number | null
+  currency: string | null
+  saved_at?: Date
+  status?: string
+  completed_at?: Date | null
+}
+
 export interface Database {
   users: UsersTable
   email_verification_tokens: EmailVerificationTokensTable
@@ -187,6 +202,7 @@ export interface Database {
   trips: TripsTable
   trip_segments: TripSegmentsTable
   user_intelligence_wrapped: UserIntelligenceWrappedTable
+  saved_flights: SavedFlightsTable
   stripe_events: StripeEventsTable
   admin_activity: AdminActivityTable
   monitored_routes: any

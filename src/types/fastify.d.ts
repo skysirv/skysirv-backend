@@ -8,5 +8,13 @@ declare module "fastify" {
     db: Kysely<DB>
     queue: Queue
     billingService: BillingService
+    authenticate: any
+  }
+
+  interface FastifyRequest {
+    user: {
+      id: string
+      email: string
+    }
   }
 }
