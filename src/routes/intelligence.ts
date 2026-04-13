@@ -41,6 +41,10 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
       const { year } = request.params as { year: string }
       const currentUser = request.user as { id: string }
 
+      const numericYear = Number(year)
+      const yearStart = new Date(`${numericYear}-01-01T00:00:00.000Z`)
+      const yearEnd = new Date(`${numericYear + 1}-01-01T00:00:00.000Z`)
+
       const wrapped = await (fastify.db as any)
         .selectFrom("user_intelligence_wrapped")
         .selectAll()
@@ -48,13 +52,37 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
         .where("year", "=", Number(year))
         .executeTakeFirst()
 
+      const completedTripsForYear = await (fastify.db as any)
+        .selectFrom("trips")
+        .selectAll()
+        .where("user_id", "=", currentUser.id)
+        .where("status", "=", "completed")
+        .where("started_at", ">=", yearStart)
+        .where("started_at", "<", yearEnd)
+        .orderBy("started_at", "asc")
+        .execute()
+
+      const derivedFlights = completedTripsForYear.length
+
+      const derivedRoutesMonitored = new Set(
+        completedTripsForYear.map(
+          (trip: any) =>
+            `${trip.origin_airport_code ?? "—"}-${trip.destination_airport_code ?? "—"}`
+        )
+      ).size
+
       if (!wrapped) {
         return reply.send({
           success: false,
           message: `No wrapped data found for year ${year}`,
-          year: Number(year),
-          wrapped: null,
-          trips: [],
+          year: numericYear,
+          wrapped: derivedFlights > 0
+            ? {
+              flights: derivedFlights,
+              routes_monitored: derivedRoutesMonitored,
+            }
+            : null,
+          trips: completedTripsForYear,
           segments: [],
         })
       }
@@ -75,33 +103,38 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
 
       const trips = tripIds.length
         ? await (fastify.db as any)
-            .selectFrom("trips")
-            .selectAll()
-            .where("user_id", "=", currentUser.id)
-            .where("id", "in", tripIds)
-            .orderBy("started_at", "asc")
-            .execute()
+          .selectFrom("trips")
+          .selectAll()
+          .where("user_id", "=", currentUser.id)
+          .where("id", "in", tripIds)
+          .orderBy("started_at", "asc")
+          .execute()
         : []
 
       const segments = tripIds.length
         ? await (fastify.db as any)
-            .selectFrom("trip_segments")
-            .selectAll()
-            .where("user_id", "=", currentUser.id)
-            .where("trip_id", "in", tripIds)
-            .orderBy("trip_id", "asc")
-            .orderBy("segment_order", "asc")
-            .execute()
+          .selectFrom("trip_segments")
+          .selectAll()
+          .where("user_id", "=", currentUser.id)
+          .where("trip_id", "in", tripIds)
+          .orderBy("trip_id", "asc")
+          .orderBy("segment_order", "asc")
+          .execute()
         : []
 
       return reply.send({
         success: true,
-        year: Number(year),
+        year: numericYear,
         wrapped: {
           ...wrapped,
+          flights: derivedFlights > 0 ? derivedFlights : wrapped.flights,
+          routes_monitored:
+            derivedRoutesMonitored > 0
+              ? derivedRoutesMonitored
+              : wrapped.routes_monitored,
           wrapped_payload_json: parsedPayload,
         },
-        trips,
+        trips: trips.length > 0 ? trips : completedTripsForYear,
         segments,
       })
     }
