@@ -265,4 +265,37 @@ export async function savedFlightsRoutes(app: FastifyInstance) {
             return reply.send(updated)
         }
     )
+
+    app.delete(
+        "/saved-flights/:id",
+        { preHandler: app.authenticate },
+        async (request, reply) => {
+            const user = request.user as { id: string; email: string }
+            const { id } = request.params as { id: string }
+
+            const existing = await app.db
+                .selectFrom("saved_flights")
+                .selectAll()
+                .where("id", "=", id)
+                .where("user_id", "=", user.id)
+                .executeTakeFirst()
+
+            if (!existing) {
+                return reply.status(404).send({
+                    error: "Saved flight not found",
+                })
+            }
+
+            await app.db
+                .deleteFrom("saved_flights")
+                .where("id", "=", id)
+                .where("user_id", "=", user.id)
+                .execute()
+
+            return reply.send({
+                success: true,
+                deletedId: id,
+            })
+        }
+    )
 }
