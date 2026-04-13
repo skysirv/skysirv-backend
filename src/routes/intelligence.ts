@@ -101,6 +101,10 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
         ? parsedPayload.tripIds
         : []
 
+      const segmentIds = Array.isArray(parsedPayload?.segmentIds)
+        ? parsedPayload.segmentIds
+        : []
+
       const trips = tripIds.length
         ? await (fastify.db as any)
           .selectFrom("trips")
@@ -111,16 +115,55 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
           .execute()
         : []
 
-      const segments = tripIds.length
+      const segments = segmentIds.length
         ? await (fastify.db as any)
           .selectFrom("trip_segments")
           .selectAll()
           .where("user_id", "=", currentUser.id)
-          .where("trip_id", "in", tripIds)
+          .where("id", "in", segmentIds)
           .orderBy("trip_id", "asc")
           .orderBy("segment_order", "asc")
           .execute()
-        : []
+        : tripIds.length
+          ? await (fastify.db as any)
+            .selectFrom("trip_segments")
+            .selectAll()
+            .where("user_id", "=", currentUser.id)
+            .where("trip_id", "in", tripIds)
+            .orderBy("trip_id", "asc")
+            .orderBy("segment_order", "asc")
+            .execute()
+          : []
+
+      const airportNodes = Array.from(
+        new Set(
+          segments.flatMap((segment: any) => [
+            segment.departure_airport_code,
+            segment.arrival_airport_code,
+          ]).filter(Boolean)
+        )
+      ).map((airportCode) => ({
+        airportCode,
+      }))
+
+      const routeArcs = segments
+        .filter(
+          (segment: any) =>
+            segment.departure_airport_code && segment.arrival_airport_code
+        )
+        .map((segment: any) => ({
+          tripId: segment.trip_id,
+          segmentId: segment.id,
+          segmentOrder: segment.segment_order,
+          origin: segment.departure_airport_code,
+          destination: segment.arrival_airport_code,
+          airlineCode: segment.airline_code,
+          flightNumber: segment.flight_number,
+          status: segment.status,
+          source: segment.source,
+          scheduledDepartureAt: segment.scheduled_departure_at,
+          scheduledArrivalAt: segment.scheduled_arrival_at,
+        }))
 
       return reply.send({
         success: true,
@@ -134,6 +177,9 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
               : wrapped.routes_monitored,
           wrapped_payload_json: parsedPayload,
         },
+        segmentCount: segments.length,
+        airportNodes,
+        routeArcs,
         trips: trips.length > 0 ? trips : completedTripsForYear,
         segments,
       })
