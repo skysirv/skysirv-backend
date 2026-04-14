@@ -4,8 +4,47 @@ import { FastifyInstance } from "fastify"
 import { computeSkyscore } from "../intelligence/computeSkyscore.js"
 import { computePredict } from "../intelligence/computePredict.js"
 import { computeInsights } from "../intelligence/computeInsights.js"
+import {
+  airportDirectory,
+  type AirportDirectoryEntry,
+} from "../data/airports.js"
 
 type RangeOption = "30d" | "90d" | "180d"
+
+type RouteArc = {
+  tripId: string
+  segmentId: string
+  segmentOrder: number
+  origin: string
+  destination: string
+  airlineCode: string | null
+  flightNumber: string | null
+  status: string | null
+  source: string | null
+  scheduledDepartureAt: string | Date | null
+  scheduledArrivalAt: string | Date | null
+}
+
+type TripPathSegment = {
+  segmentId: string
+  segmentOrder: number
+  origin: string
+  destination: string
+  airlineCode: string | null
+  flightNumber: string | null
+  status: string | null
+  source: string | null
+  scheduledDepartureAt: string | Date | null
+  scheduledArrivalAt: string | Date | null
+}
+
+type TripPath = {
+  tripId: string
+  origin: string
+  destination: string
+  segmentCount: number
+  segments: TripPathSegment[]
+}
 
 function parseRange(range?: string): number {
   switch (range) {
@@ -29,6 +68,25 @@ function median(values: number[]): number {
   }
 
   return sorted[mid]
+}
+
+function normalizeAirportCode(code: unknown): string | null {
+  if (typeof code !== "string") return null
+
+  const normalized = code.trim().toUpperCase()
+  return normalized.length > 0 ? normalized : null
+}
+
+function getAirportMeta(code: unknown): AirportDirectoryEntry | null {
+  const normalizedCode = normalizeAirportCode(code)
+
+  if (!normalizedCode) return null
+
+  const airportMeta = (airportDirectory as Record<string, AirportDirectoryEntry>)[
+    normalizedCode
+  ]
+
+  return airportMeta ?? null
 }
 
 export async function intelligenceRoutes(fastify: FastifyInstance) {
@@ -76,12 +134,13 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
           success: false,
           message: `No wrapped data found for year ${year}`,
           year: numericYear,
-          wrapped: derivedFlights > 0
-            ? {
-              flights: derivedFlights,
-              routes_monitored: derivedRoutesMonitored,
-            }
-            : null,
+          wrapped:
+            derivedFlights > 0
+              ? {
+                flights: derivedFlights,
+                routes_monitored: derivedRoutesMonitored,
+              }
+              : null,
           trips: completedTripsForYear,
           segments: [],
         })
@@ -135,85 +194,144 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
             .execute()
           : []
 
-      const airportDirectory: Record<
-        string,
-        { lat: number; lng: number; name: string; city: string; country: string }
-      > = {
-        LAX: {
-          lat: 33.9416,
-          lng: -118.4085,
-          name: "Los Angeles International Airport",
-          city: "Los Angeles",
-          country: "United States",
-        },
-        MIA: {
-          lat: 25.7959,
-          lng: -80.287,
-          name: "Miami International Airport",
-          city: "Miami",
-          country: "United States",
-        },
-        DFW: {
-          lat: 32.8998,
-          lng: -97.0403,
-          name: "Dallas/Fort Worth International Airport",
-          city: "Dallas-Fort Worth",
-          country: "United States",
-        },
-      }
-
       const airportCodes = Array.from(
         new Set(
           segments
             .flatMap((segment: any) => [
-              segment.departure_airport_code,
-              segment.arrival_airport_code,
+              normalizeAirportCode(segment.departure_airport_code),
+              normalizeAirportCode(segment.arrival_airport_code),
             ])
-            .filter((code: any) => typeof code === "string" && code.length > 0)
+            .filter((code: string | null): code is string => Boolean(code))
         )
-      ) as string[]
+      )
 
-      const airportNodes = airportCodes.map((airportCode) => {
-        const airportMeta = airportDirectory[airportCode] ?? null
+      const airportNodes = airportCodes
+        .map((airportCode) => {
+          const airportMeta = getAirportMeta(airportCode)
 
-        return {
-          airportCode,
-          lat: airportMeta?.lat,
-          lng: airportMeta?.lng,
-          name: airportMeta?.name,
-          city: airportMeta?.city,
-          country: airportMeta?.country,
-          visits: segments.filter(
-            (segment: any) =>
-              segment.departure_airport_code === airportCode ||
-              segment.arrival_airport_code === airportCode
-          ).length,
-          layoverHours: 0,
-          loungeHours: 0,
-          flights: segments.filter(
-            (segment: any) => segment.departure_airport_code === airportCode
-          ).length,
-        }
-      })
+          if (!airportMeta) {
+            return null
+          }
 
-      const routeArcs = segments
-        .filter(
-          (segment: any) =>
-            segment.departure_airport_code && segment.arrival_airport_code
-        )
-        .map((segment: any) => ({
-          tripId: segment.trip_id,
-          segmentId: segment.id,
-          segmentOrder: segment.segment_order,
-          origin: segment.departure_airport_code,
-          destination: segment.arrival_airport_code,
-          airlineCode: segment.airline_code,
-          flightNumber: segment.flight_number,
-          status: segment.status,
-          source: segment.source,
-          scheduledDepartureAt: segment.scheduled_departure_at,
-          scheduledArrivalAt: segment.scheduled_arrival_at,
-        }))
+          return {
+            airportCode,
+            lat: airportMeta.lat,
+            lng: airportMeta.lng,
+            name: airportMeta.name,
+            city: airportMeta.city,
+            country: airportMeta.country,
+            visits: segments.filter(
+              (segment: any) =>
+                normalizeAirportCode(segment.departure_airport_code) === airportCode ||
+                normalizeAirportCode(segment.arrival_airport_code) === airportCode
+            ).length,
+            layoverHours: 0,
+            loungeHours: 0,
+            flights: segments.filter(
+              (segment: any) =>
+                normalizeAirportCode(segment.departure_airport_code) === airportCode
+            ).length,
+          }
+        })
+        .filter((node): node is NonNullable<typeof node> => Boolean(node))
+
+      const routeArcs: RouteArc[] = segments.reduce(
+        (acc: RouteArc[], segment: any) => {
+          const origin = normalizeAirportCode(segment.departure_airport_code)
+          const destination = normalizeAirportCode(segment.arrival_airport_code)
+
+          if (!origin || !destination) {
+            return acc
+          }
+
+          const originMeta = getAirportMeta(origin)
+          const destinationMeta = getAirportMeta(destination)
+
+          if (!originMeta || !destinationMeta) {
+            return acc
+          }
+
+          acc.push({
+            tripId: segment.trip_id,
+            segmentId: segment.id,
+            segmentOrder: segment.segment_order,
+            origin,
+            destination,
+            airlineCode: segment.airline_code,
+            flightNumber: segment.flight_number,
+            status: segment.status,
+            source: segment.source,
+            scheduledDepartureAt: segment.scheduled_departure_at,
+            scheduledArrivalAt: segment.scheduled_arrival_at,
+          })
+
+          return acc
+        },
+        []
+      )
+
+      const tripPaths: TripPath[] = Array.from(
+        routeArcs.reduce((map, arc) => {
+          const existing = map.get(arc.tripId)
+
+          const pathSegment: TripPathSegment = {
+            segmentId: arc.segmentId,
+            segmentOrder: arc.segmentOrder,
+            origin: arc.origin,
+            destination: arc.destination,
+            airlineCode: arc.airlineCode,
+            flightNumber: arc.flightNumber,
+            status: arc.status,
+            source: arc.source,
+            scheduledDepartureAt: arc.scheduledDepartureAt,
+            scheduledArrivalAt: arc.scheduledArrivalAt,
+          }
+
+          if (!existing) {
+            map.set(arc.tripId, {
+              tripId: arc.tripId,
+              origin: arc.origin,
+              destination: arc.destination,
+              segmentCount: 1,
+              segments: [pathSegment],
+            })
+
+            return map
+          }
+
+          existing.segments.push(pathSegment)
+          existing.segmentCount = existing.segments.length
+
+          return map
+        }, new Map<string, TripPath>())
+          .values()
+      )
+        .map((tripPath) => {
+          const sortedSegments = [...tripPath.segments].sort(
+            (a, b) => a.segmentOrder - b.segmentOrder
+          )
+
+          return {
+            ...tripPath,
+            origin: sortedSegments[0]?.origin ?? tripPath.origin,
+            destination:
+              sortedSegments[sortedSegments.length - 1]?.destination ??
+              tripPath.destination,
+            segmentCount: sortedSegments.length,
+            segments: sortedSegments,
+          }
+        })
+        .sort((a, b) => {
+          const aFirstDeparture = a.segments[0]?.scheduledDepartureAt
+            ? new Date(a.segments[0].scheduledDepartureAt).getTime()
+            : Number.MAX_SAFE_INTEGER
+
+          const bFirstDeparture = b.segments[0]?.scheduledDepartureAt
+            ? new Date(b.segments[0].scheduledDepartureAt).getTime()
+            : Number.MAX_SAFE_INTEGER
+
+          return aFirstDeparture - bFirstDeparture
+        })
 
       return reply.send({
         success: true,
@@ -230,6 +348,7 @@ export async function intelligenceRoutes(fastify: FastifyInstance) {
         segmentCount: segments.length,
         airportNodes,
         routeArcs,
+        tripPaths,
         trips: trips.length > 0 ? trips : completedTripsForYear,
         segments,
       })
