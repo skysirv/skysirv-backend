@@ -8,8 +8,8 @@ export async function subscriptionRoutes(app: FastifyInstance) {
    * - free
    * - pro monthly
    * - pro yearly
-   * - enterprise monthly
-   * - enterprise yearly
+   * - business monthly
+   * - business yearly
    */
   app.post(
     "/subscriptions/create",
@@ -30,7 +30,7 @@ export async function subscriptionRoutes(app: FastifyInstance) {
       const plan = body.plan || "free"
       const billingInterval = body.billing_interval ?? null
 
-      if (!["free", "pro", "enterprise"].includes(plan)) {
+      if (!["free", "pro", "business"].includes(plan)) {
         reply.code(400)
         return { error: "Invalid plan" }
       }
@@ -41,7 +41,7 @@ export async function subscriptionRoutes(app: FastifyInstance) {
       }
 
       if (
-        (plan === "pro" || plan === "enterprise") &&
+        (plan === "pro" || plan === "business") &&
         !["monthly", "yearly"].includes(billingInterval || "")
       ) {
         reply.code(400)

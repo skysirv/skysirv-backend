@@ -43,14 +43,14 @@ export async function adminRoutes(app: FastifyInstance) {
         )
         .executeTakeFirst()
 
-      const enterpriseUsers = await app.db
+      const businessUsers = await app.db
         .selectFrom("subscriptions")
         .select((eb) => eb.fn.count("id").as("count"))
         .where("status", "=", "active")
         .where((eb) =>
           eb.or([
-            eb("plan_id", "=", "enterprise"),
-            eb("plan_id", "like", "enterprise_%")
+            eb("plan_id", "=", "business"),
+            eb("plan_id", "like", "business_%")
           ])
         )
         .executeTakeFirst()
@@ -65,7 +65,7 @@ export async function adminRoutes(app: FastifyInstance) {
       const totalUsers = Number(users?.count ?? 0)
       const active = Number(activeSubs?.count ?? 0)
       const pro = Number(proUsers?.count ?? 0)
-      const enterprise = Number(enterpriseUsers?.count ?? 0)
+      const business = Number(businessUsers?.count ?? 0)
 
       return {
         platform: "Skysirv Intelligence Engine",
@@ -73,7 +73,7 @@ export async function adminRoutes(app: FastifyInstance) {
         freeUsers: totalUsers - active,
         activeSubscriptions: active,
         proUsers: pro,
-        enterpriseUsers: enterprise,
+        businessUsers: business,
         watchlists: Number(watchlists?.count ?? 0),
         routesMonitored: Number(monitoredRoutes?.count ?? 0),
         queueJobs

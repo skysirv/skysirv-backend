@@ -4,7 +4,7 @@ import { env } from "../config/env.js"
 import { logAdminActivity } from "../services/adminActivity.js"
 
 type CheckoutBody = {
-  plan: "pro" | "enterprise"
+  plan: "pro" | "business"
   billing: "monthly" | "yearly"
 }
 
@@ -38,8 +38,8 @@ export async function billingRoutes(app: FastifyInstance) {
          * Plans in DB are stored like:
          * pro_monthly
          * pro_yearly
-         * enterprise_monthly
-         * enterprise_yearly
+         * business_monthly
+         * business_yearly
          */
         const planId = `${body.plan}_${body.billing}`
 

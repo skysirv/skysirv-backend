@@ -40,16 +40,16 @@ export async function up(db: Kysely<any>): Promise<void> {
       stripe_price_id: "price_1T87k123AJ546doflJlcIh0h"
     },
     {
-      id: "enterprise_monthly",
-      name: "Enterprise Monthly",
+      id: "business_monthly",
+      name: "Business Monthly",
       max_watchlists: 100,
       max_alerts: 500,
       price_monthly: 99,
       stripe_price_id: "price_1T87lZ23AJ546dofFXkye5uP"
     },
     {
-      id: "enterprise_yearly",
-      name: "Enterprise Yearly",
+      id: "business_yearly",
+      name: "Business Yearly",
       max_watchlists: 100,
       max_alerts: 500,
       price_monthly: 990,
