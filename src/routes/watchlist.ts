@@ -22,33 +22,67 @@ export async function watchlistRoutes(app: FastifyInstance) {
       const user = request.user as { id: string; email: string }
       console.log("USER:", user)
 
-      const { origin, destination, departureDate } = request.body as {
+      // ✅ TYPES
+      type WatchlistLeg = {
         origin: string
         destination: string
         departureDate: string
       }
 
-      console.log("BODY:", { origin, destination, departureDate })
+      type SingleBody = {
+        origin: string
+        destination: string
+        departureDate: string
+      }
 
-      if (!origin || !destination || !departureDate) {
-        console.log("MISSING FIELDS")
+      type MultiBody = {
+        legs: WatchlistLeg[]
+      }
+
+      const body = request.body as SingleBody | MultiBody
+
+      // ✅ NORMALIZE INPUT INTO LEGS ARRAY
+      let legs: WatchlistLeg[] = []
+
+      if ("legs" in body && Array.isArray(body.legs)) {
+        legs = body.legs
+      } else {
+        const single = body as SingleBody
+
+        legs = [
+          {
+            origin: single.origin,
+            destination: single.destination,
+            departureDate: single.departureDate,
+          },
+        ]
+      }
+
+      console.log("BODY:", body)
+      console.log("LEGS:", legs)
+
+      // ✅ VALIDATION
+      if (!legs.length) {
         return reply.status(400).send({
           error: "Missing required fields",
         })
       }
 
-      const normalizedOrigin = origin.trim().toUpperCase()
-      const normalizedDestination = destination.trim().toUpperCase()
+      for (const leg of legs) {
+        if (!leg.origin || !leg.destination || !leg.departureDate) {
+          return reply.status(400).send({
+            error: "Each leg must include origin, destination, and departureDate",
+          })
+        }
 
-      if (normalizedOrigin === normalizedDestination) {
-        console.log("INVALID ROUTE: SAME ORIGIN AND DESTINATION", {
-          origin: normalizedOrigin,
-          destination: normalizedDestination,
-        })
+        const o = leg.origin.trim().toUpperCase()
+        const d = leg.destination.trim().toUpperCase()
 
-        return reply.status(400).send({
-          error: "Origin and destination cannot be the same airport.",
-        })
+        if (o === d) {
+          return reply.status(400).send({
+            error: "Origin and destination cannot be the same airport.",
+          })
+        }
       }
 
       const userId = user.id
@@ -57,10 +91,7 @@ export async function watchlistRoutes(app: FastifyInstance) {
 
       const allowed = await canCreateWatchlist(userId)
 
-      console.log("CAN CREATE WATCHLIST:", allowed)
-
       if (!allowed) {
-        console.log("WATCHLIST BLOCKED BY ENTITLEMENTS")
         return reply.status(403).send({
           error: "Watchlist limit reached. Upgrade your plan to add more routes.",
         })
@@ -68,60 +99,63 @@ export async function watchlistRoutes(app: FastifyInstance) {
 
       console.log("ATTEMPTING WATCHLIST INSERT")
 
-      const result = await addToWatchlist(
-        userId,
-        normalizedOrigin,
-        normalizedDestination,
-        departureDate
-      )
+      const results: Awaited<ReturnType<typeof addToWatchlist>>[] = []
 
-      console.log("WATCHLIST INSERT RESULT:", result)
+      for (const leg of legs) {
+        const origin = leg.origin.trim().toUpperCase()
+        const destination = leg.destination.trim().toUpperCase()
 
-      const route = `${normalizedOrigin}-${normalizedDestination}`
+        const result = await addToWatchlist(
+          userId,
+          origin,
+          destination,
+          leg.departureDate
+        )
 
-      await db
-        .insertInto("monitored_routes")
-        .values({
-          route,
-          route_hash: result.route_hash,
-          frequency_hours: 6,
-          is_active: true,
-          last_checked_at: null,
-          created_at: new Date(),
-          updated_at: new Date(),
-        })
-        .onConflict((oc) =>
-          oc.column("route_hash").doUpdateSet({
+        const route = `${origin}-${destination}`
+
+        await db
+          .insertInto("monitored_routes")
+          .values({
             route,
+            route_hash: result.route_hash,
+            frequency_hours: 6,
             is_active: true,
+            last_checked_at: null,
+            created_at: new Date(),
             updated_at: new Date(),
           })
+          .onConflict((oc) =>
+            oc.column("route_hash").doUpdateSet({
+              route,
+              is_active: true,
+              updated_at: new Date(),
+            })
+          )
+          .execute()
+
+        await monitorQueue.add(
+          QUEUE_NAMES.monitor,
+          {
+            routeHash: result.route_hash,
+            origin,
+            destination,
+            departureDate: result.departure_date,
+          },
+          {
+            jobId: result.route_hash,
+            removeOnComplete: true,
+            removeOnFail: 100,
+          }
         )
-        .execute()
 
-      console.log("MONITORED ROUTE UPSERTED:", {
-        route,
-        routeHash: result.route_hash,
+        results.push(result)
+      }
+
+      return reply.send({
+        success: true,
+        legs: results,
       })
-
-      await monitorQueue.add(
-        QUEUE_NAMES.monitor,
-        {
-          routeHash: result.route_hash,
-          origin: normalizedOrigin,
-          destination: normalizedDestination,
-          departureDate: result.departure_date,
-        },
-        {
-          jobId: result.route_hash,
-          removeOnComplete: true,
-          removeOnFail: 100,
-        }
-      )
-
-      console.log("IMMEDIATE MONITOR JOB ENQUEUED:", result.route_hash)
-
-      return reply.send(result)
     }
   )
 
