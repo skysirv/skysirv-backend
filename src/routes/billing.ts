@@ -71,7 +71,7 @@ export async function billingRoutes(app: FastifyInstance) {
             }
           ],
 
-          success_url: env.STRIPE_SUCCESS_URL,
+          success_url: `${env.FRONTEND_BASE_URL}/dashboard/${body.plan}?welcome=1`,
           cancel_url: env.STRIPE_CANCEL_URL,
 
           metadata: {
