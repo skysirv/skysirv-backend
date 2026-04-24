@@ -71,33 +71,27 @@ export async function inviteRoutes(app: FastifyInstance) {
         .execute()
     }
 
-    const existingSub = await app.db
-      .selectFrom("subscriptions")
-      .selectAll()
+    await app.db
+      .updateTable("subscriptions")
+      .set({
+        status: "inactive",
+      } as any)
       .where("user_id", "=", user!.id)
-      .executeTakeFirst()
+      .execute()
 
-    if (!existingSub) {
-      await app.db
-        .insertInto("subscriptions")
-        .values({
-          id: crypto.randomUUID(),
-          user_id: user!.id,
-          plan_id: "pro_lifetime",
-          status: "active",
-          created_at: new Date(),
-        } as any)
-        .execute()
-    } else {
-      await app.db
-        .updateTable("subscriptions")
-        .set({
-          plan_id: "pro_lifetime",
-          status: "active",
-        } as any)
-        .where("id", "=", existingSub.id)
-        .execute()
-    }
+    await app.db
+      .insertInto("subscriptions")
+      .values({
+        id: crypto.randomUUID(),
+        user_id: user!.id,
+        plan_id: "pro_lifetime",
+        status: "active",
+        billing_interval: null,
+        stripe_subscription_id: null,
+        current_period_end: null,
+        created_at: new Date(),
+      } as any)
+      .execute()
 
     await app.db
       .updateTable("invite_tokens")
