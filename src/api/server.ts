@@ -19,6 +19,7 @@ import { subscriptionRoutes } from "../routes/subscriptions.js"
 import { googleAuthRoutes } from "../auth/googleRoutes.js"
 import { betaRoutes } from "../routes/beta.js"
 import { savedFlightsRoutes } from "../routes/saved-flights.js"
+import { flightAttendantRoutes } from "../routes/flightAttendant.js"
 import { getMonitorQueue } from "../infra/queues.js"
 import { db } from "../db/kysely.js"
 import { BillingService } from "../services/billing.service.js"
@@ -105,6 +106,7 @@ export function buildServer() {
   app.register(subscriptionRoutes, { prefix: "/api" })
   app.register(betaRoutes, { prefix: "/api" })
   app.register(savedFlightsRoutes)
+  app.register(flightAttendantRoutes, { prefix: "/api" })
 
   // Health
   app.get("/health", async () => {
