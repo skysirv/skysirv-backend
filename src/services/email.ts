@@ -108,3 +108,32 @@ export async function sendFeedbackResponseEmail(
     throw error
   }
 }
+
+export async function sendAdminActivityAlertEmail(message: string) {
+  const adminEmail = "skysirv@gmail.com"
+
+  try {
+    const response = await resend.emails.send({
+      from: FROM,
+      to: adminEmail,
+      subject: "New Skysirv Admin Activity",
+      html: `
+        <h2>New Skysirv Activity</h2>
+
+        <p>A new platform activity event was recorded:</p>
+
+        <div style="margin:20px 0;padding:16px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;color:#0f172a;line-height:1.6;">
+          ${message.replace(/\n/g, "<br />")}
+        </div>
+
+        <p style="margin-top:20px;color:#64748b;font-size:12px">
+          Skysirv Admin Activity Alert
+        </p>
+      `
+    })
+
+    console.log("📨 Admin activity alert email sent:", response)
+  } catch (error) {
+    console.error("Admin activity alert email error:", error)
+  }
+}
