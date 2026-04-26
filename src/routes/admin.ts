@@ -303,6 +303,63 @@ export async function adminRoutes(app: FastifyInstance) {
   )
 
   /**
+ * Remove feedback from homepage testimonials
+ */
+  app.post(
+    "/admin/feedback/:id/remove-testimonial",
+    {
+      preHandler: [app.authenticate, adminGuard]
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string }
+
+      const feedback = await (app.db as any)
+        .selectFrom("user_feedback")
+        .select(["id", "email"])
+        .where("id", "=", id)
+        .executeTakeFirst()
+
+      if (!feedback) {
+        return reply.status(404).send({
+          error: "Feedback not found"
+        })
+      }
+
+      const updated = await (app.db as any)
+        .updateTable("user_feedback")
+        .set({
+          used_as_testimonial: false,
+          testimonial_approved_at: null
+        })
+        .where("id", "=", id)
+        .returning([
+          "id",
+          "user_id",
+          "email",
+          "rating",
+          "message",
+          "status",
+          "admin_response",
+          "responded_at",
+          "used_as_testimonial",
+          "testimonial_approved_at",
+          "created_at"
+        ])
+        .executeTakeFirst()
+
+      await logAdminActivity(
+        app.db,
+        `Feedback removed from homepage testimonials: ${feedback.email || "unknown user"}`
+      )
+
+      return {
+        success: true,
+        feedback: updated
+      }
+    }
+  )
+
+  /**
    * Invite beta user
    */
   app.post(
