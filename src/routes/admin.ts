@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify"
 import { adminGuard } from "../auth/adminGuard.js"
 import crypto from "crypto"
-import { sendInviteEmail } from "../services/email.js"
+import { sendFeedbackResponseEmail, sendInviteEmail } from "../services/email.js"
 import { env } from "../config/env.js"
 import { logAdminActivity } from "../services/adminActivity.js"
 
@@ -166,6 +166,81 @@ export async function adminRoutes(app: FastifyInstance) {
           testimonialApprovedAt: row.testimonial_approved_at,
           createdAt: row.created_at
         }))
+      }
+    }
+  )
+
+  /**
+ * Respond to user feedback
+ */
+  app.post(
+    "/admin/feedback/:id/respond",
+    {
+      preHandler: [app.authenticate, adminGuard]
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string }
+
+      const body = request.body as {
+        message?: string
+      }
+
+      const responseMessage = body?.message?.trim()
+
+      if (!responseMessage) {
+        return reply.status(400).send({
+          error: "Response message is required"
+        })
+      }
+
+      const feedback = await (app.db as any)
+        .selectFrom("user_feedback")
+        .select(["id", "email", "message"])
+        .where("id", "=", id)
+        .executeTakeFirst()
+
+      if (!feedback) {
+        return reply.status(404).send({
+          error: "Feedback not found"
+        })
+      }
+
+      if (!feedback.email) {
+        return reply.status(400).send({
+          error: "Feedback does not have an email address"
+        })
+      }
+
+      await sendFeedbackResponseEmail(feedback.email, responseMessage)
+
+      const updated = await (app.db as any)
+        .updateTable("user_feedback")
+        .set({
+          admin_response: responseMessage,
+          responded_at: new Date(),
+          status: "responded"
+        })
+        .where("id", "=", id)
+        .returning([
+          "id",
+          "user_id",
+          "email",
+          "rating",
+          "message",
+          "status",
+          "admin_response",
+          "responded_at",
+          "used_as_testimonial",
+          "testimonial_approved_at",
+          "created_at"
+        ])
+        .executeTakeFirst()
+
+      await logAdminActivity(app.db, `Feedback response sent: ${feedback.email}`)
+
+      return {
+        success: true,
+        feedback: updated
       }
     }
   )

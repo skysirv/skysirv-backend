@@ -73,3 +73,38 @@ export async function sendVerificationEmail(email: string, verifyLink: string) {
 
   }
 }
+
+export async function sendFeedbackResponseEmail(
+  email: string,
+  message: string
+) {
+  try {
+    const response = await resend.emails.send({
+      from: FROM,
+      to: email,
+      subject: "A note from Skysirv ✈️",
+      html: `
+        <h2>Thank you for your feedback</h2>
+
+        <p>We reviewed your message and wanted to respond personally.</p>
+
+        <div style="margin:20px 0;padding:16px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;color:#0f172a;line-height:1.6;">
+          ${message.replace(/\n/g, "<br />")}
+        </div>
+
+        <p style="margin-top:20px;color:#475569;font-size:14px">
+          Thank you for helping us improve Skysirv during beta.
+        </p>
+
+        <p style="margin-top:20px;color:#64748b;font-size:12px">
+          Skysirv Travel Intelligence Platform
+        </p>
+      `
+    })
+
+    console.log("📨 Feedback response email sent:", response)
+  } catch (error) {
+    console.error("Feedback response email error:", error)
+    throw error
+  }
+}
