@@ -125,6 +125,52 @@ export async function adminRoutes(app: FastifyInstance) {
   )
 
   /**
+ * List user feedback
+ */
+  app.get(
+    "/admin/feedback",
+    {
+      preHandler: [app.authenticate, adminGuard]
+    },
+    async () => {
+      const rows = await (app.db as any)
+        .selectFrom("user_feedback")
+        .select([
+          "id",
+          "user_id",
+          "email",
+          "rating",
+          "message",
+          "status",
+          "admin_response",
+          "responded_at",
+          "used_as_testimonial",
+          "testimonial_approved_at",
+          "created_at"
+        ])
+        .orderBy("created_at", "desc")
+        .limit(100)
+        .execute()
+
+      return {
+        feedback: rows.map((row: any) => ({
+          id: row.id,
+          userId: row.user_id,
+          email: row.email,
+          rating: row.rating,
+          message: row.message,
+          status: row.status,
+          adminResponse: row.admin_response,
+          respondedAt: row.responded_at,
+          usedAsTestimonial: row.used_as_testimonial,
+          testimonialApprovedAt: row.testimonial_approved_at,
+          createdAt: row.created_at
+        }))
+      }
+    }
+  )
+
+  /**
    * Invite beta user
    */
   app.post(

@@ -248,4 +248,58 @@ export async function watchlistRoutes(app: FastifyInstance) {
       })
     }
   )
+  // Submit user feedback
+  app.post(
+    "/feedback",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const user = request.user as { id: string; email: string }
+
+      const body = request.body as {
+        rating?: number
+        message?: string
+      }
+
+      const rating = Number(body?.rating)
+      const message = body?.message?.trim()
+
+      if (!rating || rating < 1 || rating > 5) {
+        return reply.status(400).send({
+          error: "Rating must be between 1 and 5",
+        })
+      }
+
+      if (!message) {
+        return reply.status(400).send({
+          error: "Feedback message is required",
+        })
+      }
+
+      const feedback = await (app.db as any)
+        .insertInto("user_feedback")
+        .values({
+          user_id: user.id,
+          email: user.email,
+          rating,
+          message,
+          status: "new",
+          created_at: new Date(),
+        })
+        .returning([
+          "id",
+          "user_id",
+          "email",
+          "rating",
+          "message",
+          "status",
+          "created_at",
+        ])
+        .executeTakeFirst()
+
+      return reply.send({
+        success: true,
+        feedback,
+      })
+    }
+  )
 }
