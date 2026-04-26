@@ -4,6 +4,7 @@ import crypto from "crypto"
 import { sendFeedbackResponseEmail, sendInviteEmail } from "../services/email.js"
 import { env } from "../config/env.js"
 import { logAdminActivity } from "../services/adminActivity.js"
+import { getOpenAIChatModel, openai } from "../services/openai.js"
 
 export async function adminRoutes(app: FastifyInstance) {
   /**
@@ -94,6 +95,31 @@ export async function adminRoutes(app: FastifyInstance) {
         api: "online",
         workers: "active",
         monitorQueue: "running"
+      }
+    }
+  )
+
+  /**
+ * OpenAI backend connectivity health check
+ */
+  app.get(
+    "/admin/openai-health",
+    {
+      preHandler: [app.authenticate, adminGuard]
+    },
+    async () => {
+      const model = getOpenAIChatModel()
+
+      const response = await openai.responses.create({
+        model,
+        input:
+          "Reply with exactly this phrase and nothing else: Skysirv OpenAI connection healthy."
+      })
+
+      return {
+        success: true,
+        model,
+        message: response.output_text
       }
     }
   )

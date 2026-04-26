@@ -26,6 +26,10 @@ const envSchema = z
 
     STRIPE_SUCCESS_URL: z.string().url(),
     STRIPE_CANCEL_URL: z.string().url(),
+
+    OPENAI_API_KEY: z.string().min(1),
+    OPENAI_CHAT_MODEL: z.string().default("gpt-5.4-mini"),
+    OPENAI_INTELLIGENCE_MODEL: z.string().default("gpt-5.4"),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== "production") return
