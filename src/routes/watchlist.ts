@@ -302,4 +302,43 @@ export async function watchlistRoutes(app: FastifyInstance) {
       })
     }
   )
+
+  // List approved homepage testimonials
+  app.get(
+    "/testimonials",
+    async () => {
+      const rows = await (app.db as any)
+        .selectFrom("user_feedback")
+        .select([
+          "id",
+          "email",
+          "rating",
+          "message",
+          "testimonial_approved_at",
+          "created_at",
+        ])
+        .where("used_as_testimonial", "=", true)
+        .orderBy("testimonial_approved_at", "desc")
+        .limit(12)
+        .execute()
+
+      return {
+        testimonials: rows.map((row: any) => {
+          const emailName = row.email
+            ? String(row.email).split("@")[0]
+            : "Skysirv beta user"
+
+          return {
+            id: row.id,
+            name: emailName,
+            handle: "@skysirv_beta",
+            date: row.testimonial_approved_at || row.created_at,
+            rating: row.rating,
+            image: "/branding/icon/skysirv-icon-512.png",
+            quote: row.message,
+          }
+        }),
+      }
+    }
+  )
 }
