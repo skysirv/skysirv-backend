@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify"
 import { getOpenAIChatModel, openai } from "../services/openai.js"
+import { env } from "../config/env.js"
 
 type FlightAttendantRole = "user" | "assistant"
 
@@ -135,6 +136,27 @@ function writeStreamEvent(
   reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
 
+function getAllowedStreamingOrigin(origin?: string) {
+  if (!origin) return null
+
+  const allowedExact = [
+    env.FRONTEND_BASE_URL,
+    "https://skysirv.com",
+    "https://www.skysirv.com",
+    "https://skysirv-frontend.vercel.app",
+  ]
+
+  const isAllowedVercelPreview =
+    origin.startsWith("https://skysirv-frontend-") &&
+    origin.endsWith(".vercel.app")
+
+  if (allowedExact.includes(origin) || isAllowedVercelPreview) {
+    return origin
+  }
+
+  return null
+}
+
 export async function flightAttendantRoutes(app: FastifyInstance) {
   app.post(
     "/flight-attendant/chat",
@@ -189,6 +211,13 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
       }
 
       const model = getOpenAIChatModel()
+
+      const allowedOrigin = getAllowedStreamingOrigin(request.headers.origin)
+
+      if (allowedOrigin) {
+        reply.raw.setHeader("Access-Control-Allow-Origin", allowedOrigin)
+        reply.raw.setHeader("Vary", "Origin")
+      }
 
       reply.raw.setHeader("Content-Type", "text/event-stream")
       reply.raw.setHeader("Cache-Control", "no-cache, no-transform")
