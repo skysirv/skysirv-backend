@@ -211,6 +211,8 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
       }
 
       const model = getOpenAIChatModel()
+      const { debug } = request.query as { debug?: string }
+      const debugStream = debug === "1"
 
       const allowedOrigin = getAllowedStreamingOrigin(request.headers.origin)
 
@@ -248,12 +250,12 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
             break
           }
 
-          request.log.info(
-            {
+          if (debugStream) {
+            writeStreamEvent(reply, "debug", {
               type: event?.type,
-            },
-            "Flight Attendant stream event"
-          )
+              keys: Object.keys(event || {}),
+            })
+          }
 
           const delta =
             typeof event?.delta === "string"
