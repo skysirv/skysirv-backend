@@ -312,7 +312,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
 
           buffer += decoder.decode(value, { stream: true })
 
-          const chunks = buffer.split("\n\n")
+          const chunks = buffer.split(/\r?\n\r?\n/)
           buffer = chunks.pop() || ""
 
           for (const chunk of chunks) {
@@ -374,6 +374,54 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
                   parsed?.response?.error?.message ||
                   "Skysirv Flight Attendant could not complete the response.",
               })
+            }
+          }
+        }
+
+        if (buffer.trim()) {
+          const lines = buffer.split(/\r?\n/)
+          const dataLines = lines
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).trim())
+
+          if (dataLines.length) {
+            const data = dataLines.join("\n")
+
+            if (data && data !== "[DONE]") {
+              try {
+                const parsed = JSON.parse(data)
+
+                if (debugStream) {
+                  writeStreamEvent(reply, "debug", {
+                    type: parsed?.type,
+                    keys: Object.keys(parsed || {}),
+                  })
+                }
+
+                const delta = extractDeltaFromOpenAIEvent(parsed)
+
+                if (delta) {
+                  fullText += delta
+
+                  writeStreamEvent(reply, "delta", {
+                    delta,
+                  })
+                }
+
+                if (parsed?.type === "response.completed") {
+                  doneSent = true
+
+                  writeStreamEvent(reply, "done", {
+                    reply: fullText,
+                  })
+                }
+              } catch {
+                if (debugStream) {
+                  writeStreamEvent(reply, "debug", {
+                    raw: data,
+                  })
+                }
+              }
             }
           }
         }
