@@ -243,16 +243,28 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
 
         let fullText = ""
 
-        for await (const event of stream) {
+        for await (const event of stream as any) {
           if (request.raw.destroyed || reply.raw.destroyed) {
             break
           }
 
-          if (event.type === "response.output_text.delta") {
-            const delta = event.delta || ""
+          request.log.info(
+            {
+              type: event?.type,
+            },
+            "Flight Attendant stream event"
+          )
 
-            if (!delta) continue
+          const delta =
+            typeof event?.delta === "string"
+              ? event.delta
+              : typeof event?.text === "string"
+                ? event.text
+                : typeof event?.content === "string"
+                  ? event.content
+                  : ""
 
+          if (delta) {
             fullText += delta
 
             writeStreamEvent(reply, "delta", {
@@ -260,11 +272,30 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
             })
           }
 
-          if (event.type === "response.completed") {
+          if (event?.type === "response.completed") {
+            const completedText =
+              typeof event?.response?.output_text === "string"
+                ? event.response.output_text
+                : fullText
+
             writeStreamEvent(reply, "done", {
-              reply: fullText,
+              reply: completedText,
             })
           }
+
+          if (event?.type === "response.failed") {
+            writeStreamEvent(reply, "error", {
+              error:
+                event?.response?.error?.message ||
+                "Skysirv Flight Attendant could not complete the response.",
+            })
+          }
+        }
+
+        if (fullText) {
+          writeStreamEvent(reply, "done", {
+            reply: fullText,
+          })
         }
       } catch (error: any) {
         request.log.error(error)
