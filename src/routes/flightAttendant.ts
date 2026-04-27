@@ -81,7 +81,11 @@ function normalizeConversation(body: FlightAttendantChatBody) {
   if (directMessage) {
     const lastMessage = normalized[normalized.length - 1]
 
-    if (!lastMessage || lastMessage.role !== "user" || lastMessage.content !== directMessage) {
+    if (
+      !lastMessage ||
+      lastMessage.role !== "user" ||
+      lastMessage.content !== directMessage
+    ) {
       normalized.push({
         role: "user",
         content: directMessage,
@@ -90,6 +94,45 @@ function normalizeConversation(body: FlightAttendantChatBody) {
   }
 
   return normalized.slice(-MAX_CONVERSATION_MESSAGES)
+}
+
+function buildOpenAIInput({
+  user,
+  conversation,
+}: {
+  user: { id: string; email?: string }
+  conversation: Array<{
+    role: FlightAttendantRole
+    content: string
+  }>
+}) {
+  return [
+    {
+      role: "system" as const,
+      content: FLIGHT_ATTENDANT_SYSTEM_PROMPT,
+    },
+    {
+      role: "user" as const,
+      content: `Authenticated Skysirv user:
+User ID: ${user.id}
+Email: ${user.email || "unknown"}
+
+The following is the current page-session conversation. Respond to the latest user message while respecting the prior context.`,
+    },
+    ...conversation.map((message) => ({
+      role: message.role,
+      content: message.content,
+    })),
+  ]
+}
+
+function writeStreamEvent(
+  reply: any,
+  event: string,
+  payload: Record<string, unknown>
+) {
+  reply.raw.write(`event: ${event}\n`)
+  reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
 
 export async function flightAttendantRoutes(app: FastifyInstance) {
@@ -114,30 +157,96 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
 
       const response = await openai.responses.create({
         model,
-        input: [
-          {
-            role: "system",
-            content: FLIGHT_ATTENDANT_SYSTEM_PROMPT,
-          },
-          {
-            role: "user",
-            content: `Authenticated Skysirv user:
-User ID: ${user.id}
-Email: ${user.email || "unknown"}
-
-The following is the current page-session conversation. Respond to the latest user message while respecting the prior context.`
-          },
-          ...conversation.map((message) => ({
-            role: message.role,
-            content: message.content,
-          })),
-        ],
+        input: buildOpenAIInput({
+          user,
+          conversation,
+        }),
       })
 
       return {
         success: true,
         model,
         reply: response.output_text,
+      }
+    }
+  )
+
+  app.post(
+    "/flight-attendant/chat-stream",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const user = request.user as { id: string; email?: string }
+      const body = request.body as FlightAttendantChatBody
+
+      const conversation = normalizeConversation(body)
+
+      if (!conversation.length) {
+        return reply.status(400).send({
+          error: "Message is required",
+        })
+      }
+
+      const model = getOpenAIChatModel()
+
+      reply.raw.setHeader("Content-Type", "text/event-stream")
+      reply.raw.setHeader("Cache-Control", "no-cache, no-transform")
+      reply.raw.setHeader("Connection", "keep-alive")
+      reply.raw.setHeader("X-Accel-Buffering", "no")
+
+      reply.raw.flushHeaders?.()
+
+      writeStreamEvent(reply, "meta", {
+        success: true,
+        model,
+      })
+
+      try {
+        const stream = await openai.responses.create({
+          model,
+          stream: true,
+          input: buildOpenAIInput({
+            user,
+            conversation,
+          }),
+        })
+
+        let fullText = ""
+
+        for await (const event of stream) {
+          if (request.raw.destroyed || reply.raw.destroyed) {
+            break
+          }
+
+          if (event.type === "response.output_text.delta") {
+            const delta = event.delta || ""
+
+            if (!delta) continue
+
+            fullText += delta
+
+            writeStreamEvent(reply, "delta", {
+              delta,
+            })
+          }
+
+          if (event.type === "response.completed") {
+            writeStreamEvent(reply, "done", {
+              reply: fullText,
+            })
+          }
+        }
+      } catch (error: any) {
+        request.log.error(error)
+
+        writeStreamEvent(reply, "error", {
+          error:
+            error?.message ||
+            "Something went wrong while contacting Skysirv Flight Attendant.",
+        })
+      } finally {
+        reply.raw.end()
       }
     }
   )
