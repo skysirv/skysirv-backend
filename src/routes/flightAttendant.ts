@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify"
-import { getOpenAIChatModel, openai } from "../services/openai.js"
 import { env } from "../config/env.js"
+import { getOpenAIChatModel, openai } from "../services/openai.js"
 
 type FlightAttendantRole = "user" | "assistant"
 
@@ -157,6 +157,23 @@ function getAllowedStreamingOrigin(origin?: string) {
   return null
 }
 
+function extractDeltaFromOpenAIEvent(event: any) {
+  if (!event || typeof event !== "object") return ""
+
+  if (
+    event.type === "response.output_text.delta" &&
+    typeof event.delta === "string"
+  ) {
+    return event.delta
+  }
+
+  if (typeof event.delta === "string") return event.delta
+  if (typeof event.text === "string") return event.text
+  if (typeof event.content === "string") return event.content
+
+  return ""
+}
+
 export async function flightAttendantRoutes(app: FastifyInstance) {
   app.post(
     "/flight-attendant/chat",
@@ -233,80 +250,149 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         model,
       })
 
+      const controller = new AbortController()
+
+      request.raw.on("close", () => {
+        controller.abort()
+      })
+
       try {
-        const stream = await openai.responses.create({
-          model,
-          stream: true,
-          input: buildOpenAIInput({
-            user,
-            conversation,
+        const openAIResponse = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            stream: true,
+            input: buildOpenAIInput({
+              user,
+              conversation,
+            }),
           }),
         })
 
-        let fullText = ""
+        if (!openAIResponse.ok) {
+          const errorText = await openAIResponse.text().catch(() => "")
 
-        for await (const event of stream as any) {
+          writeStreamEvent(reply, "error", {
+            error:
+              errorText ||
+              "Skysirv Flight Attendant could not start the streaming response.",
+          })
+
+          return
+        }
+
+        if (!openAIResponse.body) {
+          writeStreamEvent(reply, "error", {
+            error: "Skysirv Flight Attendant stream did not return a response body.",
+          })
+
+          return
+        }
+
+        const reader = openAIResponse.body.getReader()
+        const decoder = new TextDecoder()
+
+        let buffer = ""
+        let fullText = ""
+        let doneSent = false
+
+        while (true) {
           if (request.raw.destroyed || reply.raw.destroyed) {
             break
           }
 
-          if (debugStream) {
-            writeStreamEvent(reply, "debug", {
-              type: event?.type,
-              keys: Object.keys(event || {}),
-            })
-          }
+          const { value, done } = await reader.read()
 
-          const delta =
-            typeof event?.delta === "string"
-              ? event.delta
-              : typeof event?.text === "string"
-                ? event.text
-                : typeof event?.content === "string"
-                  ? event.content
-                  : ""
+          if (done) break
 
-          if (delta) {
-            fullText += delta
+          buffer += decoder.decode(value, { stream: true })
 
-            writeStreamEvent(reply, "delta", {
-              delta,
-            })
-          }
+          const chunks = buffer.split("\n\n")
+          buffer = chunks.pop() || ""
 
-          if (event?.type === "response.completed") {
-            const completedText =
-              typeof event?.response?.output_text === "string"
-                ? event.response.output_text
-                : fullText
+          for (const chunk of chunks) {
+            const lines = chunk.split("\n")
+            const dataLines = lines
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.slice(5).trim())
 
-            writeStreamEvent(reply, "done", {
-              reply: completedText,
-            })
-          }
+            if (!dataLines.length) continue
 
-          if (event?.type === "response.failed") {
-            writeStreamEvent(reply, "error", {
-              error:
-                event?.response?.error?.message ||
-                "Skysirv Flight Attendant could not complete the response.",
-            })
+            const data = dataLines.join("\n")
+
+            if (!data || data === "[DONE]") continue
+
+            let parsed: any = null
+
+            try {
+              parsed = JSON.parse(data)
+            } catch {
+              if (debugStream) {
+                writeStreamEvent(reply, "debug", {
+                  raw: data,
+                })
+              }
+
+              continue
+            }
+
+            if (debugStream) {
+              writeStreamEvent(reply, "debug", {
+                type: parsed?.type,
+                keys: Object.keys(parsed || {}),
+              })
+            }
+
+            const delta = extractDeltaFromOpenAIEvent(parsed)
+
+            if (delta) {
+              fullText += delta
+
+              writeStreamEvent(reply, "delta", {
+                delta,
+              })
+            }
+
+            if (parsed?.type === "response.completed") {
+              doneSent = true
+
+              writeStreamEvent(reply, "done", {
+                reply: fullText,
+              })
+            }
+
+            if (parsed?.type === "response.failed") {
+              doneSent = true
+
+              writeStreamEvent(reply, "error", {
+                error:
+                  parsed?.response?.error?.message ||
+                  "Skysirv Flight Attendant could not complete the response.",
+              })
+            }
           }
         }
 
-        if (fullText) {
+        if (!doneSent) {
           writeStreamEvent(reply, "done", {
             reply: fullText,
           })
         }
       } catch (error: any) {
-        request.log.error(error)
+        if (error?.name !== "AbortError") {
+          request.log.error(error)
 
-        writeStreamEvent(reply, "error", {
-          error:
-            error?.message ||
-            "Something went wrong while contacting Skysirv Flight Attendant.",
-        })
+          writeStreamEvent(reply, "error", {
+            error:
+              error?.message ||
+              "Something went wrong while contacting Skysirv Flight Attendant.",
+          })
+        }
       } finally {
         reply.raw.end()
       }
