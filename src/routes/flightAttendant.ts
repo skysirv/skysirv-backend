@@ -250,19 +250,13 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         model,
       })
 
-      const controller = new AbortController()
-
-      reply.raw.on("close", () => {
-        controller.abort()
-      })
-
       try {
         const openAIResponse = await fetch("https://api.openai.com/v1/responses", {
           method: "POST",
-          signal: controller.signal,
           headers: {
             Authorization: `Bearer ${env.OPENAI_API_KEY}`,
             "Content-Type": "application/json",
+            Accept: "text/event-stream",
           },
           body: JSON.stringify({
             model,
