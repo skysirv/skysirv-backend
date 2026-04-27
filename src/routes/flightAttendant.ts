@@ -252,7 +252,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
 
       const controller = new AbortController()
 
-      request.raw.on("close", () => {
+      reply.raw.on("close", () => {
         controller.abort()
       })
 
