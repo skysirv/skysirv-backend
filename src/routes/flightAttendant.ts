@@ -87,6 +87,68 @@ function cleanMessageText(value: unknown) {
   return value.trim().slice(0, MAX_MESSAGE_LENGTH)
 }
 
+function isClearlyOffTopic(message: string) {
+  const normalized = message.toLowerCase()
+
+  const travelOrSkysirvSignals = [
+    "skysirv",
+    "flight",
+    "fare",
+    "route",
+    "watchlist",
+    "track",
+    "booking",
+    "book",
+    "airport",
+    "airline",
+    "ticket",
+    "trip",
+    "travel",
+    "plan",
+    "subscription",
+    "lucy",
+    "skyscore",
+    "price",
+    "prices",
+    "pro",
+    "free",
+    "business",
+  ]
+
+  const offTopicSignals = [
+    "cook",
+    "dinner",
+    "recipe",
+    "meal",
+    "poem",
+    "joke",
+    "coding",
+    "code",
+    "homework",
+    "math",
+    "medical",
+    "doctor",
+    "legal",
+    "lawyer",
+    "financial advice",
+    "relationship",
+    "sports",
+    "politics",
+    "movie",
+    "song",
+  ]
+
+  const hasTravelOrSkysirvSignal = travelOrSkysirvSignals.some((signal) =>
+    normalized.includes(signal)
+  )
+
+  const hasOffTopicSignal = offTopicSignals.some((signal) =>
+    normalized.includes(signal)
+  )
+
+  return hasOffTopicSignal && !hasTravelOrSkysirvSignal
+}
+
 function normalizeConversation(body: FlightAttendantChatBody) {
   const normalized: Array<{
     role: FlightAttendantRole
@@ -342,6 +404,19 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         return reply.status(400).send({
           error: "Message is required",
         })
+      }
+
+      const latestUserMessage = [...conversation]
+        .reverse()
+        .find((message) => message.role === "user")?.content
+
+      if (latestUserMessage && isClearlyOffTopic(latestUserMessage)) {
+        return {
+          success: true,
+          model: "scope-guardrail",
+          reply:
+            "I’m focused on Skysirv flight intelligence, so I can’t help with that here. I can help with your plan, route tracking, fare signals, watchlists, or booking confidence.",
+        }
       }
 
       const accountContext = await getLucyAccountContext({
