@@ -347,7 +347,9 @@ function buildOpenAIInput({
   return [
     {
       role: "system" as const,
-      content: `Authenticated Skysirv user:
+      content: `${FLIGHT_ATTENDANT_SYSTEM_PROMPT}
+
+Authenticated Skysirv user:
 User ID: ${user.id}
 Email: ${accountContext.userEmail || user.email || "unknown"}
 
@@ -406,11 +408,13 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         })
       }
 
-      const latestUserMessage = [...conversation]
-        .reverse()
-        .find((message) => message.role === "user")?.content
+      const latestUserMessage =
+        cleanMessageText(body.message) ||
+        [...conversation].reverse().find((message) => message.role === "user")
+          ?.content ||
+        ""
 
-      if (latestUserMessage && isClearlyOffTopic(latestUserMessage)) {
+      if (isClearlyOffTopic(latestUserMessage)) {
         return {
           success: true,
           model: "scope-guardrail",
