@@ -1,5 +1,10 @@
 import { FastifyInstance } from "fastify"
-import { getOpenAIChatModel, openai } from "../services/openai.js"
+import {
+  getOpenAIChatModel,
+  getOpenAIIntelligenceModel,
+  openai,
+} from "../services/openai.js"
+import { getUserWatchlist } from "../db/watchlist.js"
 
 type FlightAttendantRole = "user" | "assistant"
 
@@ -17,6 +22,103 @@ type FlightAttendantChatBody = {
 
 const MAX_CONVERSATION_MESSAGES = 10
 const MAX_MESSAGE_LENGTH = 2500
+
+type LucyDashboardSummary = {
+  headline: string
+  summary: string
+  signalFeed: string[]
+  systemReadout: string
+  recommendedAction: "watch" | "wait" | "book" | "insufficient_data"
+  confidence: "low" | "medium" | "high"
+  dataStatus: "pending" | "building" | "ready"
+}
+
+const FALLBACK_DASHBOARD_SUMMARY: LucyDashboardSummary = {
+  headline: "Lucy is reviewing your route intelligence",
+  summary:
+    "Your dashboard is connected. As Skysirv collects more fare history across your watched routes, Lucy will be able to explain route movement, pricing pressure, and booking confidence with more precision.",
+  signalFeed: [
+    "Route monitoring is active for your saved watchlist.",
+    "Fare intelligence improves as more price snapshots are collected.",
+    "Lucy will avoid making confident booking calls until the data supports it.",
+  ],
+  systemReadout:
+    "Dashboard intelligence is building from your watchlist, saved route activity, and available fare history.",
+  recommendedAction: "insufficient_data",
+  confidence: "low",
+  dataStatus: "building",
+}
+
+function cleanDashboardSummary(value: unknown): LucyDashboardSummary {
+  if (!value || typeof value !== "object") {
+    return FALLBACK_DASHBOARD_SUMMARY
+  }
+
+  const input = value as Partial<LucyDashboardSummary>
+
+  const recommendedActions: LucyDashboardSummary["recommendedAction"][] = [
+    "watch",
+    "wait",
+    "book",
+    "insufficient_data",
+  ]
+
+  const confidenceLevels: LucyDashboardSummary["confidence"][] = [
+    "low",
+    "medium",
+    "high",
+  ]
+
+  const dataStatuses: LucyDashboardSummary["dataStatus"][] = [
+    "pending",
+    "building",
+    "ready",
+  ]
+
+  return {
+    headline:
+      typeof input.headline === "string" && input.headline.trim()
+        ? input.headline.trim().slice(0, 140)
+        : FALLBACK_DASHBOARD_SUMMARY.headline,
+    summary:
+      typeof input.summary === "string" && input.summary.trim()
+        ? input.summary.trim().slice(0, 700)
+        : FALLBACK_DASHBOARD_SUMMARY.summary,
+    signalFeed: Array.isArray(input.signalFeed)
+      ? input.signalFeed
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 4)
+      : FALLBACK_DASHBOARD_SUMMARY.signalFeed,
+    systemReadout:
+      typeof input.systemReadout === "string" && input.systemReadout.trim()
+        ? input.systemReadout.trim().slice(0, 500)
+        : FALLBACK_DASHBOARD_SUMMARY.systemReadout,
+    recommendedAction:
+      input.recommendedAction &&
+        recommendedActions.includes(input.recommendedAction)
+        ? input.recommendedAction
+        : FALLBACK_DASHBOARD_SUMMARY.recommendedAction,
+    confidence:
+      input.confidence && confidenceLevels.includes(input.confidence)
+        ? input.confidence
+        : FALLBACK_DASHBOARD_SUMMARY.confidence,
+    dataStatus:
+      input.dataStatus && dataStatuses.includes(input.dataStatus)
+        ? input.dataStatus
+        : FALLBACK_DASHBOARD_SUMMARY.dataStatus,
+  }
+}
+
+function parseDashboardSummaryJson(rawText: string): LucyDashboardSummary {
+  try {
+    const parsed = JSON.parse(rawText)
+    return cleanDashboardSummary(parsed)
+  } catch {
+    return FALLBACK_DASHBOARD_SUMMARY
+  }
+}
 
 const FLIGHT_ATTENDANT_SYSTEM_PROMPT = `
 You are Lucy, the Skysirv Flight Attendant, a premium AI travel intelligence assistant built into Skysirv.
@@ -332,6 +434,83 @@ async function getLucyAccountContext({
   }
 }
 
+function buildDashboardSummaryInput({
+  user,
+  accountContext,
+  watchlist,
+}: {
+  user: { id: string; email?: string }
+  accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
+  watchlist: Awaited<ReturnType<typeof getUserWatchlist>>
+}) {
+  const routes = watchlist.slice(0, 12).map((route) => ({
+    origin: route.origin,
+    destination: route.destination,
+    departureDate: route.departure_date,
+    latestPrice: route.latest_price,
+    averagePrice: route.avg_price ? Number(route.avg_price) / 100 : null,
+    latestAirline: route.latest_airline,
+    latestFlightNumber: route.latest_flight_number,
+    latestCapturedAt: route.latest_captured_at,
+    bookingSignal: route.booking_signal,
+    volatilityIndex: route.volatility_index,
+    recommendedFlightsCount: Array.isArray(route.recommended_flights)
+      ? route.recommended_flights.length
+      : 0,
+  }))
+
+  return [
+    {
+      role: "system" as const,
+      content: `
+You are Lucy, the Skysirv Flight Attendant.
+
+Create one concise dashboard intelligence summary for an authenticated Skysirv user.
+
+Return strict JSON only.
+Do not include markdown.
+Do not include commentary outside the JSON.
+
+The JSON must match this exact shape:
+{
+  "headline": "string",
+  "summary": "string",
+  "signalFeed": ["string", "string", "string"],
+  "systemReadout": "string",
+  "recommendedAction": "watch" | "wait" | "book" | "insufficient_data",
+  "confidence": "low" | "medium" | "high",
+  "dataStatus": "pending" | "building" | "ready"
+}
+
+Rules:
+- Never invent prices, airlines, alerts, savings, trends, or route movement.
+- Only mention a route-specific signal if the provided data supports it.
+- If route history is thin or missing, say intelligence is still building.
+- Keep the tone premium, calm, warm, and useful.
+- Use the name Lucy only when it feels natural.
+- Keep the summary under 90 words.
+- Use 2 to 4 signalFeed items.
+- Make the systemReadout short and operational.
+- recommendedAction should be "insufficient_data" unless there is enough route data to support "watch", "wait", or "book".
+- confidence should usually be "low" when latest prices or route history are missing.
+- dataStatus should be "pending" when there are no watched routes, "building" when routes exist but data is thin, and "ready" only when enough fare data exists.
+
+User/account context:
+User ID: ${user.id}
+Email: ${accountContext.userEmail || user.email || "unknown"}
+Plan: ${accountContext.planDisplayName}
+Lucy access level: ${accountContext.lucyAccessLevel}
+Tracked routes: ${accountContext.currentTrackedRoutes}
+Route limit: ${accountContext.routeLimitLabel}
+Remaining tracked routes: ${accountContext.remainingTrackedRoutes}
+
+Watchlist route context:
+${JSON.stringify(routes, null, 2)}
+`.trim(),
+    },
+  ]
+}
+
 function buildOpenAIInput({
   user,
   accountContext,
@@ -444,6 +623,52 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         success: true,
         model,
         reply: response.output_text,
+      }
+    }
+  )
+
+  app.post(
+    "/flight-attendant/dashboard-summary",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request) => {
+      const user = request.user as { id: string; email?: string }
+
+      const accountContext = await getLucyAccountContext({
+        app,
+        userId: user.id,
+      })
+
+      const watchlist = await getUserWatchlist(user.id)
+      const model = getOpenAIIntelligenceModel()
+
+      try {
+        const response = await openai.responses.create({
+          model,
+          input: buildDashboardSummaryInput({
+            user,
+            accountContext,
+            watchlist,
+          }),
+        })
+
+        const summary = parseDashboardSummaryJson(response.output_text)
+
+        return {
+          success: true,
+          model,
+          summary,
+        }
+      } catch (error) {
+        request.log.error(error, "Lucy dashboard summary generation failed")
+
+        return {
+          success: true,
+          model,
+          summary: FALLBACK_DASHBOARD_SUMMARY,
+          fallback: true,
+        }
       }
     }
   )
