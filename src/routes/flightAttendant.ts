@@ -12,6 +12,7 @@ type FlightAttendantIncomingMessage = {
 type FlightAttendantChatBody = {
   message?: string
   messages?: FlightAttendantIncomingMessage[]
+  tier?: "free" | "pro" | "business"
 }
 
 const MAX_CONVERSATION_MESSAGES = 10
@@ -96,11 +97,156 @@ function normalizeConversation(body: FlightAttendantChatBody) {
   return normalized.slice(-MAX_CONVERSATION_MESSAGES)
 }
 
+function normalizePlanId(planId: string | null | undefined) {
+  const value = (planId || "free").toLowerCase()
+
+  if (value.includes("pro")) return "pro"
+  if (value.includes("business") || value.includes("enterprise")) return "business"
+
+  return "free"
+}
+
+function getLucyAccessLevel(normalizedPlan: string) {
+  if (normalizedPlan === "business") return "Advanced"
+  if (normalizedPlan === "pro") return "Standard"
+
+  return "Limited"
+}
+
+function getPlanDisplayName(normalizedPlan: string) {
+  if (normalizedPlan === "business") return "Business"
+  if (normalizedPlan === "pro") return "Pro"
+
+  return "Free"
+}
+
+function getRouteLimit(normalizedPlan: string) {
+  if (normalizedPlan === "business") {
+    return {
+      value: null as number | null,
+      label: "unlimited tracked routes",
+    }
+  }
+
+  if (normalizedPlan === "pro") {
+    return {
+      value: 25,
+      label: "25 tracked routes",
+    }
+  }
+
+  return {
+    value: 3,
+    label: "3 tracked routes",
+  }
+}
+
+function formatMembershipDuration(createdAt: Date | string | null | undefined) {
+  if (!createdAt) return "unknown"
+
+  const createdDate = new Date(createdAt)
+  const now = new Date()
+
+  if (Number.isNaN(createdDate.getTime())) return "unknown"
+
+  const diffMs = now.getTime() - createdDate.getTime()
+  const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+
+  if (diffDays < 1) return "less than 1 day"
+  if (diffDays === 1) return "1 day"
+  if (diffDays < 30) return `${diffDays} days`
+
+  const diffMonths = Math.floor(diffDays / 30)
+
+  if (diffMonths === 1) return "about 1 month"
+  if (diffMonths < 12) return `about ${diffMonths} months`
+
+  const diffYears = Math.floor(diffMonths / 12)
+  const remainingMonths = diffMonths % 12
+
+  if (diffYears === 1 && remainingMonths === 0) return "about 1 year"
+  if (diffYears === 1) return `about 1 year and ${remainingMonths} months`
+  if (remainingMonths === 0) return `about ${diffYears} years`
+
+  return `about ${diffYears} years and ${remainingMonths} months`
+}
+
+async function getLucyAccountContext({
+  app,
+  userId,
+  frontendTier,
+}: {
+  app: FastifyInstance
+  userId: string
+  frontendTier?: "free" | "pro" | "business"
+}) {
+  const user = await app.db
+    .selectFrom("users")
+    .select(["id", "email", "created_at", "is_verified"])
+    .where("id", "=", userId)
+    .executeTakeFirst()
+
+  const activeSubscription = await app.db
+    .selectFrom("subscriptions")
+    .select([
+      "id",
+      "plan_id",
+      "status",
+      "billing_interval",
+      "current_period_end",
+      "created_at",
+    ])
+    .where("user_id", "=", userId)
+    .where("status", "=", "active")
+    .orderBy("created_at", "desc")
+    .executeTakeFirst()
+
+  const rawPlanId = activeSubscription?.plan_id ?? "free"
+  const normalizedPlan = normalizePlanId(rawPlanId)
+  const planDisplayName = getPlanDisplayName(normalizedPlan)
+  const lucyAccessLevel = getLucyAccessLevel(normalizedPlan)
+  const routeLimit = getRouteLimit(normalizedPlan)
+
+  const watchlistCountResult = await app.db
+    .selectFrom("watchlist")
+    .select((eb) => eb.fn.count("id").as("count"))
+    .where("user_id", "=", userId)
+    .executeTakeFirst()
+
+  const currentTrackedRoutes = Number(watchlistCountResult?.count ?? 0)
+
+  const remainingTrackedRoutes =
+    routeLimit.value === null
+      ? "unlimited"
+      : Math.max(routeLimit.value - currentTrackedRoutes, 0)
+
+  return {
+    userEmail: user?.email || "unknown",
+    accountCreatedAt: user?.created_at || null,
+    membershipDuration: formatMembershipDuration(user?.created_at),
+    isVerified: Boolean(user?.is_verified),
+    rawPlanId,
+    normalizedPlan,
+    planDisplayName,
+    lucyAccessLevel,
+    subscriptionStatus: activeSubscription?.status || "active",
+    billingInterval: activeSubscription?.billing_interval || "none",
+    currentPeriodEnd: activeSubscription?.current_period_end || null,
+    routeLimitLabel: routeLimit.label,
+    routeLimitValue: routeLimit.value,
+    currentTrackedRoutes,
+    remainingTrackedRoutes,
+    frontendTier: frontendTier || "not provided",
+  }
+}
+
 function buildOpenAIInput({
   user,
+  accountContext,
   conversation,
 }: {
   user: { id: string; email?: string }
+  accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
   conversation: Array<{
     role: FlightAttendantRole
     content: string
@@ -109,13 +255,37 @@ function buildOpenAIInput({
   return [
     {
       role: "system" as const,
-      content: FLIGHT_ATTENDANT_SYSTEM_PROMPT,
-    },
-    {
-      role: "user" as const,
       content: `Authenticated Skysirv user:
 User ID: ${user.id}
-Email: ${user.email || "unknown"}
+Email: ${accountContext.userEmail || user.email || "unknown"}
+
+Verified account: ${accountContext.isVerified ? "yes" : "no"}
+Account created at: ${accountContext.accountCreatedAt || "unknown"}
+Membership duration: ${accountContext.membershipDuration}
+
+Subscription/account context:
+Raw plan ID: ${accountContext.rawPlanId}
+Normalized plan: ${accountContext.planDisplayName}
+Lucy access level: ${accountContext.lucyAccessLevel}
+Subscription status: ${accountContext.subscriptionStatus}
+Billing interval: ${accountContext.billingInterval}
+Current period end: ${accountContext.currentPeriodEnd || "none"}
+
+Route/watchlist context:
+Tracked route limit: ${accountContext.routeLimitLabel}
+Current tracked routes: ${accountContext.currentTrackedRoutes}
+Remaining tracked routes: ${accountContext.remainingTrackedRoutes}
+
+Frontend dashboard tier hint: ${accountContext.frontendTier}
+
+Use the subscription/account context above as the source of truth when answering questions about the user's plan, Lucy access level, route limit, tracked route count, remaining routes, subscription status, or membership duration.
+
+Important plan facts:
+Free includes Limited Lucy access and up to 3 tracked routes.
+Pro includes Standard Lucy access and up to 25 tracked routes.
+Business includes Advanced Lucy access and unlimited tracked routes.
+
+If the frontend dashboard tier hint conflicts with the subscription/account context, trust the subscription/account context.
 
 The following is the current page-session conversation. Respond to the latest user message while respecting the prior context.`,
     },
@@ -144,12 +314,19 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         })
       }
 
+      const accountContext = await getLucyAccountContext({
+        app,
+        userId: user.id,
+        frontendTier: body.tier,
+      })
+
       const model = getOpenAIChatModel()
 
       const response = await openai.responses.create({
         model,
         input: buildOpenAIInput({
           user,
+          accountContext,
           conversation,
         }),
       })
