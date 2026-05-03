@@ -152,6 +152,9 @@ export async function getUserWatchlist(userId: string) {
       "latest_best_fare.currency as latest_currency",
       "latest_best_fare.booking_signal as booking_signal",
       "latest_best_fare.volatility_index as volatility_index",
+      "latest_best_fare.stop_count as latest_stop_count",
+      "latest_best_fare.itinerary_key as latest_itinerary_key",
+      "latest_best_fare.itinerary_segments as latest_itinerary_segments",
 
       /*
       --------------------------------
@@ -177,9 +180,12 @@ export async function getUserWatchlist(userId: string) {
                 "valid_flight_history.captured_at",
                 "valid_flight_history.booking_signal",
                 "valid_flight_history.volatility_index",
+                "valid_flight_history.stop_count",
+                "valid_flight_history.itinerary_key",
+                "valid_flight_history.itinerary_segments",
               ])
               .distinctOn([
-                "valid_flight_history.airline",
+                "valid_flight_history.itinerary_key",
               ])
               .whereRef("valid_flight_history.route_hash", "=", "w.route_hash")
               .whereRef(
@@ -187,7 +193,7 @@ export async function getUserWatchlist(userId: string) {
                 "=",
                 "latest_per_route.latest_captured_at"
               )
-              .orderBy("valid_flight_history.airline")
+              .orderBy("valid_flight_history.itinerary_key")
               .orderBy("valid_flight_history.price", "asc")
               .orderBy("valid_flight_history.captured_at", "desc")
               .as("deduped_recommended_flights")
@@ -204,6 +210,9 @@ export async function getUserWatchlist(userId: string) {
                     'capturedAt', deduped_recommended_flights.captured_at,
                     'bookingSignal', deduped_recommended_flights.booking_signal,
                     'volatilityIndex', deduped_recommended_flights.volatility_index
+                    'stopCount', deduped_recommended_flights.stop_count,
+                    'itineraryKey', deduped_recommended_flights.itinerary_key,
+                    'itinerarySegments', deduped_recommended_flights.itinerary_segments
                   ) ORDER BY deduped_recommended_flights.price ASC`
                 ),
                 sql`'[]'::json`

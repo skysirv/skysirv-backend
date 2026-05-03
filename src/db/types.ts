@@ -86,6 +86,9 @@ export interface FlightPriceHistoryTable {
   booking_signal: string | null
   volatility_index: string | null
   captured_at?: Date
+  itinerary_segments: unknown | null
+  stop_count: number | null
+  itinerary_key: string | null
 }
 
 export interface RouteIntelligenceTable {

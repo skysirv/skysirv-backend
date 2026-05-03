@@ -1,5 +1,5 @@
 import { Duffel } from "@duffel/api"
-import { FlightProvider, FlightSearchParams, FlightResult } from "./types.js"
+import { FlightProvider, FlightSearchParams, FlightResult, FlightSegment } from "./types.js"
 
 type DuffelSegment = {
   departing_at?: string
@@ -14,6 +14,7 @@ type DuffelSegment = {
 
 type DuffelSlice = {
   segments?: DuffelSegment[]
+  duration?: string
 }
 
 type CarrierStats = {
@@ -43,7 +44,7 @@ export class DuffelAdapter implements FlightProvider {
   }
 
   private normalizeFlightNumber(value: string | null | undefined): string {
-    return String(value ?? "").trim().toUpperCase()
+    return String(value ?? "").trim().toUpperCase().replace(/\s+/g, "")
   }
 
   private isUsableCarrierCode(value: string | null | undefined): boolean {
@@ -70,6 +71,43 @@ export class DuffelAdapter implements FlightProvider {
   private isUsableFlightNumber(value: string | null | undefined): boolean {
     const flightNumber = this.normalizeFlightNumber(value)
     return /^[A-Z0-9-]{1,10}$/.test(flightNumber)
+  }
+
+  private getPreferredSegmentIdentity(segment: DuffelSegment): {
+    airline: string
+    flightNumber: string
+  } | null {
+    const marketingCarrier = this.normalizeCode(segment.marketing_carrier?.iata_code)
+    const operatingCarrier = this.normalizeCode(segment.operating_carrier?.iata_code)
+
+    const marketingFlightNumber = this.normalizeFlightNumber(
+      segment.marketing_carrier_flight_number
+    )
+    const operatingFlightNumber = this.normalizeFlightNumber(
+      segment.operating_carrier_flight_number
+    )
+
+    if (
+      this.isUsableCarrierCode(marketingCarrier) &&
+      this.isUsableFlightNumber(marketingFlightNumber)
+    ) {
+      return {
+        airline: marketingCarrier,
+        flightNumber: marketingFlightNumber,
+      }
+    }
+
+    if (
+      this.isUsableCarrierCode(operatingCarrier) &&
+      this.isUsableFlightNumber(operatingFlightNumber)
+    ) {
+      return {
+        airline: operatingCarrier,
+        flightNumber: operatingFlightNumber,
+      }
+    }
+
+    return null
   }
 
   private buildCarrierStats(segments: DuffelSegment[]): Map<string, CarrierStats> {
@@ -114,12 +152,12 @@ export class DuffelAdapter implements FlightProvider {
   private chooseDominantCarrier(segments: DuffelSegment[]): string | null {
     const stats = this.buildCarrierStats(segments)
     const ranked = Array.from(stats.values()).sort((a, b) => {
-      if (b.operatingCount !== a.operatingCount) {
-        return b.operatingCount - a.operatingCount
-      }
-
       if (b.marketingCount !== a.marketingCount) {
         return b.marketingCount - a.marketingCount
+      }
+
+      if (b.operatingCount !== a.operatingCount) {
+        return b.operatingCount - a.operatingCount
       }
 
       return a.firstSeenIndex - b.firstSeenIndex
@@ -128,44 +166,29 @@ export class DuffelAdapter implements FlightProvider {
     return ranked[0]?.code ?? null
   }
 
-  private getFlightNumberForCarrier(
-    segments: DuffelSegment[],
-    carrierCode: string
-  ): string | null {
-    for (const segment of segments) {
-      const operating = this.normalizeCode(segment.operating_carrier?.iata_code)
-      const marketing = this.normalizeCode(segment.marketing_carrier?.iata_code)
-
-      const operatingFlightNumber = this.normalizeFlightNumber(
-        segment.operating_carrier_flight_number
-      )
-      const marketingFlightNumber = this.normalizeFlightNumber(
+  private normalizeSegments(segments: DuffelSegment[]): FlightSegment[] {
+    return segments.map((segment) => ({
+      origin: this.normalizeCode(segment.origin?.iata_code),
+      destination: this.normalizeCode(segment.destination?.iata_code),
+      marketingCarrier: this.isUsableCarrierCode(segment.marketing_carrier?.iata_code)
+        ? this.normalizeCode(segment.marketing_carrier?.iata_code)
+        : undefined,
+      operatingCarrier: this.isUsableCarrierCode(segment.operating_carrier?.iata_code)
+        ? this.normalizeCode(segment.operating_carrier?.iata_code)
+        : undefined,
+      marketingFlightNumber: this.isUsableFlightNumber(
         segment.marketing_carrier_flight_number
       )
-
-      if (
-        operating === carrierCode &&
-        this.isUsableFlightNumber(operatingFlightNumber)
-      ) {
-        return operatingFlightNumber
-      }
-
-      if (
-        marketing === carrierCode &&
-        this.isUsableFlightNumber(marketingFlightNumber)
-      ) {
-        return marketingFlightNumber
-      }
-
-      if (
-        (operating === carrierCode || marketing === carrierCode) &&
-        this.isUsableFlightNumber(operatingFlightNumber)
-      ) {
-        return operatingFlightNumber
-      }
-    }
-
-    return null
+        ? this.normalizeFlightNumber(segment.marketing_carrier_flight_number)
+        : undefined,
+      operatingFlightNumber: this.isUsableFlightNumber(
+        segment.operating_carrier_flight_number
+      )
+        ? this.normalizeFlightNumber(segment.operating_carrier_flight_number)
+        : undefined,
+      departureTime: segment.departing_at,
+      arrivalTime: segment.arriving_at,
+    }))
   }
 
   private isRealisticItinerary(segments: DuffelSegment[]): boolean {
@@ -183,18 +206,68 @@ export class DuffelAdapter implements FlightProvider {
         return false
       }
 
-      const operating = this.normalizeCode(segment.operating_carrier?.iata_code)
-      const marketing = this.normalizeCode(segment.marketing_carrier?.iata_code)
+      const identity = this.getPreferredSegmentIdentity(segment)
 
-      if (
-        !this.isUsableCarrierCode(operating) &&
-        !this.isUsableCarrierCode(marketing)
-      ) {
+      if (!identity) {
         return false
       }
     }
 
     return true
+  }
+
+  private getRepresentativeFlightNumber(segments: DuffelSegment[]): string | null {
+    const segmentLabels = segments
+      .map((segment) => {
+        const identity = this.getPreferredSegmentIdentity(segment)
+
+        if (!identity) return null
+
+        return `${identity.airline}${identity.flightNumber}`
+      })
+      .filter((value): value is string => Boolean(value))
+
+    if (!segmentLabels.length) return null
+
+    return segmentLabels.join("+")
+  }
+
+  private buildItineraryKey(segments: FlightSegment[]): string {
+    return segments
+      .map((segment) => {
+        const marketingCarrier = segment.marketingCarrier ?? ""
+        const operatingCarrier = segment.operatingCarrier ?? ""
+        const marketingFlightNumber = segment.marketingFlightNumber ?? ""
+        const operatingFlightNumber = segment.operatingFlightNumber ?? ""
+
+        return [
+          segment.origin,
+          segment.destination,
+          marketingCarrier,
+          marketingFlightNumber,
+          operatingCarrier,
+          operatingFlightNumber,
+          segment.departureTime ?? "",
+        ].join(":")
+      })
+      .join("|")
+  }
+
+  private parseDurationMinutes(value: string | null | undefined): number | undefined {
+    if (!value) return undefined
+
+    const match = value.match(/^P(?:T)?(?:(\d+)H)?(?:(\d+)M)?$/)
+
+    if (!match) return undefined
+
+    const hours = Number(match[1] ?? 0)
+    const minutes = Number(match[2] ?? 0)
+
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+      return undefined
+    }
+
+    return hours * 60 + minutes
   }
 
   async searchFlights(params: FlightSearchParams): Promise<FlightResult[]> {
@@ -232,43 +305,48 @@ export class DuffelAdapter implements FlightProvider {
 
       for (const offer of offers) {
         const slice = offer.slices?.[0] as DuffelSlice | undefined
-        const segments = slice?.segments ?? []
+        const rawSegments = slice?.segments ?? []
 
-        if (!this.isRealisticItinerary(segments)) {
+        if (!this.isRealisticItinerary(rawSegments)) {
           console.log("Duffel skipped unrealistic itinerary", {
             origin: params.origin,
             destination: params.destination,
-            segments,
+            segments: rawSegments,
           })
           continue
         }
 
-        const dominantCarrier = this.chooseDominantCarrier(segments)
+        const normalizedSegments = this.normalizeSegments(rawSegments)
 
-        if (!dominantCarrier) {
-          console.log("Duffel skipped offer with no dominant carrier", {
+        const firstSegment = normalizedSegments[0]
+        const lastSegment = normalizedSegments[normalizedSegments.length - 1]
+
+        if (
+          firstSegment?.origin !== this.normalizeCode(params.origin) ||
+          lastSegment?.destination !== this.normalizeCode(params.destination)
+        ) {
+          console.log("Duffel skipped itinerary that does not match requested route endpoints", {
+            requestedOrigin: params.origin,
+            requestedDestination: params.destination,
+            firstSegment,
+            lastSegment,
+          })
+          continue
+        }
+
+        const dominantCarrier = this.chooseDominantCarrier(rawSegments)
+        const representativeFlightNumber =
+          this.getRepresentativeFlightNumber(rawSegments)
+
+        if (!dominantCarrier || !representativeFlightNumber) {
+          console.log("Duffel skipped offer with no verified itinerary identity", {
             origin: params.origin,
             destination: params.destination,
-            segments,
+            segments: rawSegments,
           })
           continue
         }
 
-        const chosenFlightNumber = this.getFlightNumberForCarrier(
-          segments,
-          dominantCarrier
-        )
-
-        if (!chosenFlightNumber) {
-          console.log("Duffel skipped offer with no usable flight number", {
-            dominantCarrier,
-            segments,
-          })
-          continue
-        }
-
-        const firstSegment = segments[0]
-        const lastSegment = segments[segments.length - 1]
         const totalPrice = Number(offer.total_amount ?? 0)
 
         if (!Number.isFinite(totalPrice) || totalPrice <= 0) {
@@ -277,11 +355,17 @@ export class DuffelAdapter implements FlightProvider {
 
         results.push({
           airline: dominantCarrier,
-          flightNumber: chosenFlightNumber,
-          departureTime: firstSegment?.departing_at,
-          arrivalTime: lastSegment?.arriving_at,
+          flightNumber: representativeFlightNumber,
+          departureTime: firstSegment?.departureTime,
+          arrivalTime: lastSegment?.arrivalTime,
           price: totalPrice,
           currency: offer.total_currency ?? "USD",
+          marketingCarrier: firstSegment?.marketingCarrier,
+          operatingCarrier: firstSegment?.operatingCarrier,
+          stopCount: Math.max(normalizedSegments.length - 1, 0),
+          totalDurationMinutes: this.parseDurationMinutes(slice?.duration),
+          itineraryKey: this.buildItineraryKey(normalizedSegments),
+          segments: normalizedSegments,
         })
       }
 

@@ -6,11 +6,28 @@ import { evaluateAlerts } from "./core/evaluateAlerts.js"
 import { computeIntelligence } from "../intelligence/computeIntelligence.js"
 import { computePriceInsight } from "./core/priceIntelligence.js"
 
+export type NormalizedItinerarySegment = {
+  origin: string
+  destination: string
+  marketingCarrier: string | null
+  operatingCarrier: string | null
+  marketingFlightNumber: string | null
+  operatingFlightNumber: string | null
+  departureTime: string | null
+  arrivalTime: string | null
+}
+
 export type NormalizedPrice = {
   airline: string
   flightNumber: string
   price: number
   currency: string
+  marketingCarrier?: string | null
+  operatingCarrier?: string | null
+  stopCount?: number | null
+  totalDurationMinutes?: number | null
+  itineraryKey?: string | null
+  segments?: NormalizedItinerarySegment[]
 }
 
 export type MonitorRouteInput = {
@@ -77,6 +94,99 @@ function isValidPrice(value: number): boolean {
   return Number.isFinite(value) && value >= 50
 }
 
+function sanitizeItinerarySegments(
+  segments: NormalizedItinerarySegment[] | null | undefined
+): NormalizedItinerarySegment[] {
+  if (!Array.isArray(segments)) return []
+
+  return segments
+    .map((segment) => {
+      const origin = normalizeAirlineCode(segment.origin)
+      const destination = normalizeAirlineCode(segment.destination)
+      const marketingCarrier = normalizeAirlineCode(segment.marketingCarrier)
+      const operatingCarrier = normalizeAirlineCode(segment.operatingCarrier)
+      const marketingFlightNumber = normalizeFlightNumber(
+        segment.marketingFlightNumber
+      )
+      const operatingFlightNumber = normalizeFlightNumber(
+        segment.operatingFlightNumber
+      )
+
+      if (!origin || !destination || origin === destination) {
+        return null
+      }
+
+      if (
+        !isUnknownAirline(marketingCarrier) &&
+        !isValidFlightNumber(marketingFlightNumber)
+      ) {
+        return null
+      }
+
+      if (
+        !isUnknownAirline(operatingCarrier) &&
+        !isValidFlightNumber(operatingFlightNumber)
+      ) {
+        return null
+      }
+
+      if (
+        isUnknownAirline(marketingCarrier) &&
+        isUnknownAirline(operatingCarrier)
+      ) {
+        return null
+      }
+
+      return {
+        origin,
+        destination,
+        marketingCarrier: isUnknownAirline(marketingCarrier)
+          ? null
+          : marketingCarrier,
+        operatingCarrier: isUnknownAirline(operatingCarrier)
+          ? null
+          : operatingCarrier,
+        marketingFlightNumber: isValidFlightNumber(marketingFlightNumber)
+          ? marketingFlightNumber
+          : null,
+        operatingFlightNumber: isValidFlightNumber(operatingFlightNumber)
+          ? operatingFlightNumber
+          : null,
+        departureTime: normalizeText(segment.departureTime) || null,
+        arrivalTime: normalizeText(segment.arrivalTime) || null,
+      }
+    })
+    .filter(
+      (segment): segment is NormalizedItinerarySegment => segment !== null
+    )
+}
+
+function buildFallbackItineraryKey(price: NormalizedPrice): string {
+  const segments = sanitizeItinerarySegments(price.segments)
+
+  if (segments.length > 0) {
+    return segments
+      .map((segment) =>
+        [
+          segment.origin,
+          segment.destination,
+          segment.marketingCarrier ?? "",
+          segment.marketingFlightNumber ?? "",
+          segment.operatingCarrier ?? "",
+          segment.operatingFlightNumber ?? "",
+          segment.departureTime ?? "",
+        ].join(":")
+      )
+      .join("|")
+  }
+
+  return [
+    normalizeAirlineCode(price.airline),
+    normalizeFlightNumber(price.flightNumber),
+    normalizeCurrency(price.currency),
+  ].join(":")
+}
+
 function getMedian(values: number[]): number {
   if (values.length === 0) return 0
 
@@ -96,6 +206,15 @@ function sanitizePrices(prices: NormalizedPrice[]): NormalizedPrice[] {
     const flightNumber = normalizeFlightNumber(raw.flightNumber)
     const currency = normalizeCurrency(raw.currency)
     const price = Number(raw.price)
+    const itinerarySegments = sanitizeItinerarySegments(raw.segments)
+    const stopCount =
+      typeof raw.stopCount === "number" && Number.isFinite(raw.stopCount)
+        ? raw.stopCount
+        : itinerarySegments.length > 0
+          ? Math.max(itinerarySegments.length - 1, 0)
+          : null
+    const itineraryKey =
+      normalizeText(raw.itineraryKey) || buildFallbackItineraryKey(raw)
 
     if (isUnknownAirline(airline)) {
       console.log("🚫 Skipping fare: unknown airline", raw)
@@ -117,6 +236,20 @@ function sanitizePrices(prices: NormalizedPrice[]): NormalizedPrice[] {
       flightNumber,
       price: Number(price.toFixed(2)),
       currency,
+      marketingCarrier: isUnknownAirline(raw.marketingCarrier)
+        ? null
+        : normalizeAirlineCode(raw.marketingCarrier),
+      operatingCarrier: isUnknownAirline(raw.operatingCarrier)
+        ? null
+        : normalizeAirlineCode(raw.operatingCarrier),
+      stopCount,
+      totalDurationMinutes:
+        typeof raw.totalDurationMinutes === "number" &&
+          Number.isFinite(raw.totalDurationMinutes)
+          ? raw.totalDurationMinutes
+          : null,
+      itineraryKey,
+      segments: itinerarySegments,
     })
   }
 
@@ -128,7 +261,7 @@ function dedupePrices(prices: NormalizedPrice[]): NormalizedPrice[] {
 
   for (const p of prices) {
     const key = [
-      normalizeAirlineCode(p.airline),
+      normalizeText(p.itineraryKey) || normalizeAirlineCode(p.airline),
       normalizeFlightNumber(p.flightNumber),
       normalizeCurrency(p.currency),
       Number(p.price.toFixed(2)),
@@ -263,6 +396,9 @@ export async function monitorRoute(
       priceDollars: p.price,
       priceInCents,
       currency: p.currency,
+      stopCount: p.stopCount ?? null,
+      itineraryKey: p.itineraryKey ?? null,
+      segmentCount: p.segments?.length ?? 0,
     })
 
     await db
@@ -283,6 +419,9 @@ export async function monitorRoute(
         skyscore: null,
         booking_signal: "WATCH",
         volatility_index: null,
+        itinerary_segments: p.segments ?? null,
+        stop_count: p.stopCount ?? null,
+        itinerary_key: p.itineraryKey ?? null,
       })
       .execute()
 
