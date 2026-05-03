@@ -203,17 +203,17 @@ export async function getUserWatchlist(userId: string) {
               .coalesce(
                 eb2.fn.jsonAgg(
                   sql`json_build_object(
-                    'airline', deduped_recommended_flights.airline,
-                    'flightNumber', deduped_recommended_flights.flight_number,
-                    'price', deduped_recommended_flights.price / 100.0,
-                    'currency', deduped_recommended_flights.currency,
-                    'capturedAt', deduped_recommended_flights.captured_at,
-                    'bookingSignal', deduped_recommended_flights.booking_signal,
-                    'volatilityIndex', deduped_recommended_flights.volatility_index
-                    'stopCount', deduped_recommended_flights.stop_count,
-                    'itineraryKey', deduped_recommended_flights.itinerary_key,
-                    'itinerarySegments', deduped_recommended_flights.itinerary_segments
-                  ) ORDER BY deduped_recommended_flights.price ASC`
+                    'airline', ${sql.ref("deduped_recommended_flights.airline")},
+                    'flightNumber', ${sql.ref("deduped_recommended_flights.flight_number")},
+                    'price', ${sql.ref("deduped_recommended_flights.price")} / 100.0,
+                    'currency', ${sql.ref("deduped_recommended_flights.currency")},
+                    'capturedAt', ${sql.ref("deduped_recommended_flights.captured_at")},
+                    'bookingSignal', ${sql.ref("deduped_recommended_flights.booking_signal")},
+                    'volatilityIndex', ${sql.ref("deduped_recommended_flights.volatility_index")},
+                    'stopCount', ${sql.ref("deduped_recommended_flights.stop_count")},
+                    'itineraryKey', ${sql.ref("deduped_recommended_flights.itinerary_key")},
+                    'itinerarySegments', ${sql.ref("deduped_recommended_flights.itinerary_segments")}
+                  ) ORDER BY ${sql.ref("deduped_recommended_flights.price")} ASC`
                 ),
                 sql`'[]'::json`
               )
