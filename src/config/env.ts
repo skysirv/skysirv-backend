@@ -30,6 +30,8 @@ const envSchema = z
     OPENAI_API_KEY: z.string().min(1),
     OPENAI_CHAT_MODEL: z.string().default("gpt-5.4-mini"),
     OPENAI_INTELLIGENCE_MODEL: z.string().default("gpt-5.4"),
+
+    MAPBOX_ACCESS_TOKEN: z.string().min(1),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== "production") return

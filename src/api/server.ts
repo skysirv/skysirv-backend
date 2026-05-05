@@ -13,6 +13,7 @@ import { billingWebhookRoute } from "../routes/billing.webhook.js"
 import { intelligenceRoutes } from "../routes/intelligence.js"
 import { monitorRoutes } from "../routes/monitor.js"
 import { explorerRoutes } from "../routes/explorer.js"
+import { airportRoutes } from "../routes/airports.js"
 import { adminRoutes } from "../routes/admin.js"
 import { inviteRoutes } from "../routes/invite.js"
 import { subscriptionRoutes } from "../routes/subscriptions.js"
@@ -101,6 +102,7 @@ export function buildServer() {
   app.register(intelligenceRoutes)
   app.register(monitorRoutes)
   app.register(explorerRoutes)
+  app.register(airportRoutes, { prefix: "/api" })
   app.register(adminRoutes, { prefix: "/api" })
   app.register(inviteRoutes, { prefix: "/api" })
   app.register(subscriptionRoutes, { prefix: "/api" })
