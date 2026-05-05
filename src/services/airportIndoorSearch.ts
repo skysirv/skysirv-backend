@@ -2,7 +2,10 @@ import { sql } from "kysely"
 
 import { env } from "../config/env.js"
 import { db } from "../db/kysely.js"
-import { getAirportIndoorBounds } from "../data/airportIndoorBounds.js"
+import {
+  getAirportIndoorBounds,
+  getSupportedAirportIndoorBounds,
+} from "../data/airportIndoorBounds.js"
 
 type IndoorSearchResult = {
   id: string
@@ -253,7 +256,7 @@ async function getFreshFeatureCount(airportCode: string) {
   return Number(row?.count ?? 0)
 }
 
-async function buildAirportIndoorIndex(airportCode: string) {
+export async function refreshAirportIndoorIndex(airportCode: string) {
   const points = generateAirportGridPoints(airportCode)
 
   if (!points) {
@@ -388,7 +391,7 @@ export async function searchAirportIndoorFeatures({
   const freshFeatureCount = await getFreshFeatureCount(normalizedAirportCode)
 
   if (freshFeatureCount === 0) {
-    await buildAirportIndoorIndex(normalizedAirportCode)
+    await refreshAirportIndoorIndex(normalizedAirportCode)
   }
 
   const cachedFeatures = await db
@@ -414,7 +417,7 @@ export async function searchAirportIndoorFeatures({
     .slice(0, 8)
 
   if (results.length === 0 && freshFeatureCount > 0) {
-    await buildAirportIndoorIndex(normalizedAirportCode)
+    await refreshAirportIndoorIndex(normalizedAirportCode)
 
     const rebuiltFeatures = await db
       .selectFrom("airport_indoor_features")
@@ -443,4 +446,55 @@ export async function searchAirportIndoorFeatures({
     supported: true,
     results,
   }
+}
+
+export async function getAirportIndoorIndexStatus(airportCode: string) {
+  const normalizedAirportCode = airportCode.trim().toUpperCase()
+  const airport = getAirportIndoorBounds(normalizedAirportCode)
+
+  if (!airport) {
+    return {
+      supported: false,
+      airportCode: normalizedAirportCode,
+      featureCount: 0,
+      stale: true,
+      oldestUpdatedAt: null as Date | null,
+      newestUpdatedAt: null as Date | null,
+    }
+  }
+
+  const row = await db
+    .selectFrom("airport_indoor_features")
+    .select(({ fn }) => [
+      fn.countAll<number>().as("feature_count"),
+      fn.min<Date>("updated_at").as("oldest_updated_at"),
+      fn.max<Date>("updated_at").as("newest_updated_at"),
+    ])
+    .where("airport_code", "=", normalizedAirportCode)
+    .executeTakeFirst()
+
+  const featureCount = Number(row?.feature_count ?? 0)
+  const newestUpdatedAt = row?.newest_updated_at ?? null
+  const oldestUpdatedAt = row?.oldest_updated_at ?? null
+
+  const freshFeatureCount = await getFreshFeatureCount(normalizedAirportCode)
+
+  return {
+    supported: true,
+    airportCode: normalizedAirportCode,
+    featureCount,
+    stale: freshFeatureCount === 0,
+    oldestUpdatedAt,
+    newestUpdatedAt,
+  }
+}
+
+export async function getAllAirportIndoorIndexStatuses() {
+  const airports = getSupportedAirportIndoorBounds()
+
+  const statuses = await Promise.all(
+    airports.map((airport) => getAirportIndoorIndexStatus(airport.code))
+  )
+
+  return statuses
 }

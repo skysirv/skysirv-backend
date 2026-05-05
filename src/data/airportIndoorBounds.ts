@@ -41,3 +41,9 @@ export const AIRPORT_INDOOR_BOUNDS: Record<string, AirportIndoorBounds> = {
 export function getAirportIndoorBounds(code: string) {
   return AIRPORT_INDOOR_BOUNDS[code.trim().toUpperCase()] ?? null
 }
+
+export function getSupportedAirportIndoorBounds() {
+  return Object.values(AIRPORT_INDOOR_BOUNDS).sort((a, b) =>
+    a.code.localeCompare(b.code)
+  )
+}

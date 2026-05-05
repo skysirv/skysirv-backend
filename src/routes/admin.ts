@@ -5,6 +5,11 @@ import { sendFeedbackResponseEmail, sendInviteEmail } from "../services/email.js
 import { env } from "../config/env.js"
 import { logAdminActivity } from "../services/adminActivity.js"
 import { getOpenAIChatModel, openai } from "../services/openai.js"
+import {
+  getAllAirportIndoorIndexStatuses,
+  getAirportIndoorIndexStatus,
+  refreshAirportIndoorIndex,
+} from "../services/airportIndoorSearch.js"
 
 export async function adminRoutes(app: FastifyInstance) {
   /**
@@ -120,6 +125,80 @@ export async function adminRoutes(app: FastifyInstance) {
         success: true,
         model,
         message: response.output_text
+      }
+    }
+  )
+
+  /**
+ * Airport Explorer indoor index status for all configured airports
+ */
+  app.get(
+    "/admin/airports/indoor-index/status",
+    {
+      preHandler: [app.authenticate, adminGuard]
+    },
+    async () => {
+      const statuses = await getAllAirportIndoorIndexStatuses()
+
+      return {
+        success: true,
+        statuses
+      }
+    }
+  )
+
+  /**
+ * Airport Explorer indoor index status
+ */
+  app.get(
+    "/admin/airports/:code/indoor-index/status",
+    {
+      preHandler: [app.authenticate, adminGuard]
+    },
+    async (request) => {
+      const { code } = request.params as { code: string }
+
+      const status = await getAirportIndoorIndexStatus(code)
+
+      return {
+        success: true,
+        status
+      }
+    }
+  )
+
+  /**
+   * Refresh Airport Explorer indoor index
+   */
+  app.post(
+    "/admin/airports/:code/indoor-index/refresh",
+    {
+      preHandler: [app.authenticate, adminGuard]
+    },
+    async (request, reply) => {
+      const { code } = request.params as { code: string }
+      const airportCode = code.trim().toUpperCase()
+
+      const result = await refreshAirportIndoorIndex(airportCode)
+
+      if (!result.supported) {
+        return reply.status(404).send({
+          success: false,
+          error: "Airport not supported",
+          message: `${airportCode} is not configured for indoor airport search yet.`
+        })
+      }
+
+      await logAdminActivity(
+        app.db,
+        `Airport indoor index refreshed: ${airportCode} (${result.featureCount} features)`
+      )
+
+      return {
+        success: true,
+        airportCode,
+        featureCount: result.featureCount,
+        refreshedAt: new Date().toISOString()
       }
     }
   )
