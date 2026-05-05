@@ -52,12 +52,18 @@ type ScoredIndoorSearchResult = {
 const INDEX_MAX_AGE_HOURS = 24 * 14
 const TILEQUERY_RADIUS_METERS = 1000
 const TILEQUERY_LIMIT = 50
+const TILEQUERY_CONCURRENCY = 4
+const TILEQUERY_BATCH_DELAY_MS = 350
 
 function normalizeSearchValue(value: unknown) {
   return String(value ?? "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ")
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function isLngLatCoordinate(value: unknown): value is [number, number] {
@@ -180,6 +186,33 @@ async function fetchIndoorFeaturesForPoint(point: {
   return data.features ?? []
 }
 
+async function fetchIndoorFeaturesForGrid(points: Array<{
+  latitude: number
+  longitude: number
+}>) {
+  const featureGroups: TilequeryFeature[][] = []
+
+  for (let index = 0; index < points.length; index += TILEQUERY_CONCURRENCY) {
+    const batch = points.slice(index, index + TILEQUERY_CONCURRENCY)
+
+    const batchResults = await Promise.allSettled(
+      batch.map((point) => fetchIndoorFeaturesForPoint(point))
+    )
+
+    for (const result of batchResults) {
+      if (result.status === "fulfilled") {
+        featureGroups.push(result.value)
+      }
+    }
+
+    if (index + TILEQUERY_CONCURRENCY < points.length) {
+      await sleep(TILEQUERY_BATCH_DELAY_MS)
+    }
+  }
+
+  return featureGroups
+}
+
 function toIndexedIndoorFeature(feature: TilequeryFeature): IndexedIndoorFeature | null {
   const properties = feature.properties ?? {}
 
@@ -266,9 +299,7 @@ export async function refreshAirportIndoorIndex(airportCode: string) {
     }
   }
 
-  const featureGroups = await Promise.all(
-    points.map((point) => fetchIndoorFeaturesForPoint(point))
-  )
+  const featureGroups = await fetchIndoorFeaturesForGrid(points)
 
   const indexedFeatures = dedupeIndexedFeatures(
     featureGroups
