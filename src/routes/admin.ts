@@ -168,6 +168,70 @@ export async function adminRoutes(app: FastifyInstance) {
   )
 
   /**
+ * Refresh Airport Explorer indoor indexes in a controlled batch
+ */
+  app.post(
+    "/admin/airports/indoor-index/refresh-batch",
+    {
+      preHandler: [app.authenticate, adminGuard]
+    },
+    async (request, reply) => {
+      const body = request.body as {
+        airportCodes?: string[]
+      }
+
+      const airportCodes = Array.from(
+        new Set(
+          (body?.airportCodes ?? [])
+            .map((code) => code.trim().toUpperCase())
+            .filter(Boolean)
+        )
+      )
+
+      if (airportCodes.length === 0) {
+        return reply.status(400).send({
+          success: false,
+          error: "Airport codes required",
+          message: "Provide airportCodes as an array, for example: ['BOS', 'JFK']."
+        })
+      }
+
+      if (airportCodes.length > 5) {
+        return reply.status(400).send({
+          success: false,
+          error: "Batch too large",
+          message: "Refresh airport indexes in batches of 5 or fewer."
+        })
+      }
+
+      const results = []
+
+      for (const airportCode of airportCodes) {
+        const result = await refreshAirportIndoorIndex(airportCode)
+
+        results.push({
+          airportCode,
+          supported: result.supported,
+          featureCount: result.featureCount,
+          refreshedAt: new Date().toISOString()
+        })
+
+        if (result.supported) {
+          await logAdminActivity(
+            app.db,
+            `Airport indoor index batch refreshed: ${airportCode} (${result.featureCount} features)`
+          )
+        }
+      }
+
+      return {
+        success: true,
+        results
+      }
+    }
+  )
+
+  /**
    * Refresh Airport Explorer indoor index
    */
   app.post(
