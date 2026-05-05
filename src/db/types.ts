@@ -192,6 +192,24 @@ export interface SavedFlightsTable {
   completed_at?: Date | null
 }
 
+export interface AirportIndoorFeaturesTable {
+  id?: string
+  airport_code: string
+  mapbox_feature_id: string | null
+  name: string
+  normalized_name: string
+  type: string | null
+  class: string | null
+  floor_id: string | null
+  longitude: number
+  latitude: number
+  source: string
+  raw_feature_json: unknown | null
+  last_seen_at?: Date
+  created_at?: Date
+  updated_at?: Date
+}
+
 export interface Database {
   users: UsersTable
   email_verification_tokens: EmailVerificationTokensTable
@@ -206,6 +224,7 @@ export interface Database {
   trip_segments: TripSegmentsTable
   user_intelligence_wrapped: UserIntelligenceWrappedTable
   saved_flights: SavedFlightsTable
+  airport_indoor_features: AirportIndoorFeaturesTable
   stripe_events: StripeEventsTable
   admin_activity: AdminActivityTable
   monitored_routes: any
