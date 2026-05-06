@@ -198,6 +198,11 @@ export interface AirportIndoorFeaturesTable {
   mapbox_feature_id: string | null
   name: string
   normalized_name: string
+  display_name: string | null
+  area_name: string | null
+  category: string | null
+  search_text: string | null
+  aliases: unknown | null
   type: string | null
   class: string | null
   floor_id: string | null
