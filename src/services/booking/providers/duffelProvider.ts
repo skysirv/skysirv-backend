@@ -97,6 +97,9 @@ function normalizeOffer(offer: any): NormalizedBookingOffer {
 export async function searchDuffelOffers(
   input: ProviderSearchInput
 ): Promise<BookingSearchResult> {
+  if (!env.DUFFEL_ACCESS_TOKEN) {
+    throw new Error("DUFFEL_ACCESS_TOKEN is not configured")
+  }
   const payload = {
     data: {
       slices: input.slices.map((slice) => ({
