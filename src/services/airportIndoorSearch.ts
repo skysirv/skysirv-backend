@@ -62,6 +62,83 @@ function normalizeSearchValue(value: unknown) {
     .replace(/\s+/g, " ")
 }
 
+function normalizeCompactValue(value: unknown) {
+  return normalizeSearchValue(value).replace(/\s+/g, "")
+}
+
+function getGateSortParts(value: string) {
+  const normalized = normalizeSearchValue(value)
+    .replace(/^gate\s+/, "")
+    .trim()
+    .toUpperCase()
+
+  const match = normalized.match(/^([A-Z])\s?(\d{1,3})([A-Z]?)$/)
+
+  if (!match) return null
+
+  return {
+    concourse: match[1],
+    number: Number(match[2]),
+    suffix: match[3] ?? "",
+  }
+}
+
+function isGatePrefixQuery(query: string) {
+  const normalized = normalizeSearchValue(query)
+  const compact = normalizeCompactValue(query)
+
+  return /^[a-z]$/i.test(compact) || /^gate\s+[a-z]$/i.test(normalized)
+}
+
+function getAirportSearchResultLimit(query: string) {
+  if (isGatePrefixQuery(query)) return 40
+
+  const compact = normalizeCompactValue(query)
+
+  if (/^[a-z]\d?$/i.test(compact)) return 30
+
+  return 12
+}
+
+function compareIndoorSearchResultsNaturally(
+  a: IndoorSearchResult,
+  b: IndoorSearchResult,
+  query: string
+) {
+  const queryCompact = normalizeCompactValue(query).toUpperCase()
+  const aGate = getGateSortParts(a.name)
+  const bGate = getGateSortParts(b.name)
+
+  if (aGate && bGate) {
+    if (isGatePrefixQuery(query)) {
+      const aMatchesConcourse = aGate.concourse === queryCompact
+      const bMatchesConcourse = bGate.concourse === queryCompact
+
+      if (aMatchesConcourse !== bMatchesConcourse) {
+        return aMatchesConcourse ? -1 : 1
+      }
+    }
+
+    if (aGate.concourse !== bGate.concourse) {
+      return aGate.concourse.localeCompare(bGate.concourse)
+    }
+
+    if (aGate.number !== bGate.number) {
+      return aGate.number - bGate.number
+    }
+
+    return aGate.suffix.localeCompare(bGate.suffix)
+  }
+
+  if (aGate && !bGate) return -1
+  if (!aGate && bGate) return 1
+
+  return a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  })
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -381,6 +458,22 @@ function scoreCachedIndoorFeature(
   if (normalizedType.includes(normalizedQuery)) score += 25
   if (normalizedClass.includes(normalizedQuery)) score += 20
 
+  const compactQuery = normalizeCompactValue(normalizedQuery)
+  const compactName = normalizeCompactValue(normalizedName)
+
+  if (compactQuery && compactName === compactQuery) score += 140
+  if (compactQuery && compactName.startsWith(compactQuery)) score += 80
+
+  const gateParts = getGateSortParts(feature.name)
+
+  if (isGatePrefixQuery(query) && gateParts) {
+    const gateConcourse = gateParts.concourse
+
+    if (gateConcourse.toLowerCase() === compactQuery.toLowerCase()) {
+      score += 180
+    }
+  }
+
   return {
     score,
     result: {
@@ -440,12 +533,18 @@ export async function searchAirportIndoorFeatures({
     .where("airport_code", "=", normalizedAirportCode)
     .execute()
 
+  const resultLimit = getAirportSearchResultLimit(normalizedQuery)
+
   let results = cachedFeatures
     .map((feature) => scoreCachedIndoorFeature(feature, normalizedQuery))
     .filter((item): item is ScoredIndoorSearchResult => item !== null)
-    .sort((a, b) => b.score - a.score)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        compareIndoorSearchResultsNaturally(a.result, b.result, normalizedQuery)
+    )
     .map((item) => item.result)
-    .slice(0, 8)
+    .slice(0, resultLimit)
 
   if (results.length === 0 && freshFeatureCount > 0) {
     await refreshAirportIndoorIndex(normalizedAirportCode)
@@ -468,9 +567,13 @@ export async function searchAirportIndoorFeatures({
     results = rebuiltFeatures
       .map((feature) => scoreCachedIndoorFeature(feature, normalizedQuery))
       .filter((item): item is ScoredIndoorSearchResult => item !== null)
-      .sort((a, b) => b.score - a.score)
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          compareIndoorSearchResultsNaturally(a.result, b.result, normalizedQuery)
+      )
       .map((item) => item.result)
-      .slice(0, 8)
+      .slice(0, resultLimit)
   }
 
   return {
