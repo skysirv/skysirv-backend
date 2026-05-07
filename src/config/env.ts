@@ -32,6 +32,10 @@ const envSchema = z
     OPENAI_INTELLIGENCE_MODEL: z.string().default("gpt-5.4"),
 
     MAPBOX_ACCESS_TOKEN: z.string().min(1),
+
+    DUFFEL_ACCESS_TOKEN: z.string().min(1),
+    DUFFEL_API_BASE_URL: z.string().url().default("https://api.duffel.com"),
+    DUFFEL_API_VERSION: z.string().default("v2"),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== "production") return
@@ -41,6 +45,7 @@ const envSchema = z
       "FRONTEND_BASE_URL",
       "STRIPE_SUCCESS_URL",
       "STRIPE_CANCEL_URL",
+      "DUFFEL_API_BASE_URL",
     ] as const
 
     for (const field of productionUrlFields) {
