@@ -3,23 +3,50 @@ import { z } from "zod"
 
 import { searchBookingOffers } from "../services/booking/bookingSearchService.js"
 
-const bookingSearchSchema = z.object({
-  provider: z.enum(["duffel"]).optional().default("duffel"),
-  tripType: z.enum(["one_way", "round_trip"]).default("one_way"),
+const bookingDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+
+const bookingLegSchema = z.object({
   origin: z.string().trim().length(3),
   destination: z.string().trim().length(3),
-  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  returnDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional()
-    .nullable(),
+  departureDate: bookingDateSchema,
+})
+
+const bookingSearchSchema = z.object({
+  provider: z.enum(["duffel"]).optional().default("duffel"),
+  tripType: z.enum(["one_way", "round_trip", "multi_city"]).default("one_way"),
+  origin: z.string().trim().length(3).optional(),
+  destination: z.string().trim().length(3).optional(),
+  departureDate: bookingDateSchema.optional(),
+  returnDate: bookingDateSchema.optional().nullable(),
+  legs: z.array(bookingLegSchema).min(2).max(6).optional(),
   adults: z.number().int().min(1).max(9).default(1),
   cabinClass: z
     .enum(["economy", "premium_economy", "business", "first"])
     .default("economy"),
   maxConnections: z.number().int().min(0).max(2).default(1),
 })
+
+function normalizeCode(value: string) {
+  return value.trim().toUpperCase()
+}
+
+function validateLegs(
+  legs: { origin: string; destination: string; departureDate: string }[]
+) {
+  for (const [index, leg] of legs.entries()) {
+    const origin = normalizeCode(leg.origin)
+    const destination = normalizeCode(leg.destination)
+
+    if (origin === destination) {
+      return {
+        valid: false,
+        error: `Leg ${index + 1} origin and destination must be different`,
+      }
+    }
+  }
+
+  return { valid: true, error: null }
+}
 
 export async function bookingRoutes(app: FastifyInstance) {
   app.post("/booking/search", async (request, reply) => {
@@ -34,26 +61,56 @@ export async function bookingRoutes(app: FastifyInstance) {
 
     const body = parsed.data
 
-    if (body.origin.toUpperCase() === body.destination.toUpperCase()) {
-      return reply.status(400).send({
-        error: "Origin and destination must be different",
-      })
-    }
+    if (body.tripType === "multi_city") {
+      if (!body.legs || body.legs.length < 2) {
+        return reply.status(400).send({
+          error: "At least two legs are required for multi-city searches",
+        })
+      }
 
-    if (body.tripType === "round_trip" && !body.returnDate) {
-      return reply.status(400).send({
-        error: "Return date is required for round-trip searches",
-      })
+      const validation = validateLegs(body.legs)
+
+      if (!validation.valid) {
+        return reply.status(400).send({
+          error: validation.error,
+        })
+      }
+    } else {
+      if (!body.origin || !body.destination || !body.departureDate) {
+        return reply.status(400).send({
+          error:
+            "Origin, destination, and departure date are required for one-way and round-trip searches",
+        })
+      }
+
+      if (normalizeCode(body.origin) === normalizeCode(body.destination)) {
+        return reply.status(400).send({
+          error: "Origin and destination must be different",
+        })
+      }
+
+      if (body.tripType === "round_trip" && !body.returnDate) {
+        return reply.status(400).send({
+          error: "Return date is required for round-trip searches",
+        })
+      }
     }
 
     try {
       const result = await searchBookingOffers({
         provider: body.provider,
         tripType: body.tripType,
-        origin: body.origin.toUpperCase(),
-        destination: body.destination.toUpperCase(),
+        origin: body.origin ? normalizeCode(body.origin) : undefined,
+        destination: body.destination
+          ? normalizeCode(body.destination)
+          : undefined,
         departureDate: body.departureDate,
         returnDate: body.returnDate,
+        legs: body.legs?.map((leg) => ({
+          origin: normalizeCode(leg.origin),
+          destination: normalizeCode(leg.destination),
+          departureDate: leg.departureDate,
+        })),
         adults: body.adults,
         cabinClass: body.cabinClass,
         maxConnections: body.maxConnections,

@@ -1,6 +1,6 @@
 export type BookingProvider = "duffel"
 
-export type BookingTripType = "one_way" | "round_trip"
+export type BookingTripType = "one_way" | "round_trip" | "multi_city"
 
 export type BookingCabinClass =
   | "economy"
@@ -17,10 +17,11 @@ export type BookingSearchSlice = {
 export type BookingSearchInput = {
   provider?: BookingProvider
   tripType: BookingTripType
-  origin: string
-  destination: string
-  departureDate: string
+  origin?: string
+  destination?: string
+  departureDate?: string
   returnDate?: string | null
+  legs?: BookingSearchSlice[]
   adults: number
   cabinClass: BookingCabinClass
   maxConnections: number
