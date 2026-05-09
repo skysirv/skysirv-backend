@@ -23,6 +23,8 @@ export type BookingSearchInput = {
   returnDate?: string | null
   legs?: BookingSearchSlice[]
   adults: number
+  children: number
+  infants: number
   cabinClass: BookingCabinClass
   maxConnections: number
 }
@@ -30,6 +32,8 @@ export type BookingSearchInput = {
 export type ProviderSearchInput = {
   slices: BookingSearchSlice[]
   adults: number
+  children: number
+  infants: number
   cabinClass: BookingCabinClass
   maxConnections: number
 }

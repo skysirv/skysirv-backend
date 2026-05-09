@@ -6,17 +6,33 @@ import type {
 } from "../types.js"
 
 type DuffelPassenger = {
-  type: "adult"
+  type: "adult" | "child" | "infant_without_seat"
 }
 
 function normalizeIataCode(value: string) {
   return value.trim().toUpperCase()
 }
 
-function buildPassengers(adults: number): DuffelPassenger[] {
-  return Array.from({ length: Math.max(1, adults) }, () => ({
-    type: "adult",
-  }))
+function buildPassengers({
+  adults,
+  children,
+  infants,
+}: {
+  adults: number
+  children: number
+  infants: number
+}): DuffelPassenger[] {
+  return [
+    ...Array.from({ length: Math.max(1, adults) }, () => ({
+      type: "adult" as const,
+    })),
+    ...Array.from({ length: Math.max(0, children) }, () => ({
+      type: "child" as const,
+    })),
+    ...Array.from({ length: Math.max(0, infants) }, () => ({
+      type: "infant_without_seat" as const,
+    })),
+  ]
 }
 
 function getFirstSegment(slice: any) {
@@ -100,6 +116,7 @@ export async function searchDuffelOffers(
   if (!env.DUFFEL_ACCESS_TOKEN) {
     throw new Error("DUFFEL_ACCESS_TOKEN is not configured")
   }
+
   const payload = {
     data: {
       slices: input.slices.map((slice) => ({
@@ -107,7 +124,11 @@ export async function searchDuffelOffers(
         destination: normalizeIataCode(slice.destination),
         departure_date: slice.departureDate,
       })),
-      passengers: buildPassengers(input.adults),
+      passengers: buildPassengers({
+        adults: input.adults,
+        children: input.children,
+        infants: input.infants,
+      }),
       cabin_class: input.cabinClass,
       max_connections: input.maxConnections,
     },

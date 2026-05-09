@@ -52,6 +52,8 @@ export async function searchBookingOffers(
   const providerInput: ProviderSearchInput = {
     slices: buildSearchSlices(input),
     adults: input.adults,
+    children: input.children,
+    infants: input.infants,
     cabinClass: input.cabinClass,
     maxConnections: input.maxConnections,
   }

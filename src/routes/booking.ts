@@ -3,6 +3,8 @@ import { z } from "zod"
 
 import { searchBookingOffers } from "../services/booking/bookingSearchService.js"
 
+const MAX_PASSENGERS = 9
+
 const bookingDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
 const bookingLegSchema = z.object({
@@ -11,20 +13,42 @@ const bookingLegSchema = z.object({
   departureDate: bookingDateSchema,
 })
 
-const bookingSearchSchema = z.object({
-  provider: z.enum(["duffel"]).optional().default("duffel"),
-  tripType: z.enum(["one_way", "round_trip", "multi_city"]).default("one_way"),
-  origin: z.string().trim().length(3).optional(),
-  destination: z.string().trim().length(3).optional(),
-  departureDate: bookingDateSchema.optional(),
-  returnDate: bookingDateSchema.optional().nullable(),
-  legs: z.array(bookingLegSchema).min(2).max(6).optional(),
-  adults: z.number().int().min(1).max(9).default(1),
-  cabinClass: z
-    .enum(["economy", "premium_economy", "business", "first"])
-    .default("economy"),
-  maxConnections: z.number().int().min(0).max(2).default(1),
-})
+const bookingSearchSchema = z
+  .object({
+    provider: z.enum(["duffel"]).optional().default("duffel"),
+    tripType: z.enum(["one_way", "round_trip", "multi_city"]).default("one_way"),
+    origin: z.string().trim().length(3).optional(),
+    destination: z.string().trim().length(3).optional(),
+    departureDate: bookingDateSchema.optional(),
+    returnDate: bookingDateSchema.optional().nullable(),
+    legs: z.array(bookingLegSchema).min(2).max(6).optional(),
+    adults: z.number().int().min(1).max(MAX_PASSENGERS).default(1),
+    children: z.number().int().min(0).max(MAX_PASSENGERS - 1).default(0),
+    infants: z.number().int().min(0).max(MAX_PASSENGERS - 1).default(0),
+    cabinClass: z
+      .enum(["economy", "premium_economy", "business", "first"])
+      .default("economy"),
+    maxConnections: z.number().int().min(0).max(2).default(1),
+  })
+  .superRefine((value, context) => {
+    const totalPassengers = value.adults + value.children + value.infants
+
+    if (totalPassengers > MAX_PASSENGERS) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["passengers"],
+        message: `Passenger total cannot exceed ${MAX_PASSENGERS}`,
+      })
+    }
+
+    if (value.infants > value.adults) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["infants"],
+        message: "Infants on lap cannot exceed the number of adults",
+      })
+    }
+  })
 
 function normalizeCode(value: string) {
   return value.trim().toUpperCase()
@@ -112,6 +136,8 @@ export async function bookingRoutes(app: FastifyInstance) {
           departureDate: leg.departureDate,
         })),
         adults: body.adults,
+        children: body.children,
+        infants: body.infants,
         cabinClass: body.cabinClass,
         maxConnections: body.maxConnections,
       })
