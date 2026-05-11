@@ -20,6 +20,21 @@ type FlightAttendantChatBody = {
   tier?: "free" | "pro" | "business"
 }
 
+type LucySuggestedAction = {
+  type: "add_watchlist_route"
+  status: "needs_confirmation"
+  origin: string
+  destination: string
+  departureDate: string
+  routeLabel: string
+  confirmationPrompt: string
+}
+
+type LucyStructuredChatResponse = {
+  reply: string
+  action: LucySuggestedAction | null
+}
+
 const MAX_CONVERSATION_MESSAGES = 10
 const MAX_MESSAGE_LENGTH = 2500
 
@@ -120,6 +135,104 @@ function parseDashboardSummaryJson(rawText: string): LucyDashboardSummary {
   }
 }
 
+function cleanAirportCode(value: unknown) {
+  if (typeof value !== "string") return null
+
+  const code = value.trim().toUpperCase()
+
+  if (!/^[A-Z0-9]{3,4}$/.test(code)) return null
+
+  return code
+}
+
+function cleanDepartureDate(value: unknown) {
+  if (typeof value !== "string") return null
+
+  const date = value.trim()
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+
+  const parsed = new Date(`${date}T00:00:00.000Z`)
+
+  if (Number.isNaN(parsed.getTime())) return null
+
+  return date
+}
+
+function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
+  if (!value || typeof value !== "object") return null
+
+  const input = value as Partial<LucySuggestedAction>
+
+  if (input.type !== "add_watchlist_route") return null
+
+  const origin = cleanAirportCode(input.origin)
+  const destination = cleanAirportCode(input.destination)
+  const departureDate = cleanDepartureDate(input.departureDate)
+
+  if (!origin || !destination || !departureDate) return null
+  if (origin === destination) return null
+
+  return {
+    type: "add_watchlist_route",
+    status: "needs_confirmation",
+    origin,
+    destination,
+    departureDate,
+    routeLabel:
+      typeof input.routeLabel === "string" && input.routeLabel.trim()
+        ? input.routeLabel.trim().slice(0, 120)
+        : `${origin} → ${destination}`,
+    confirmationPrompt:
+      typeof input.confirmationPrompt === "string" &&
+        input.confirmationPrompt.trim()
+        ? input.confirmationPrompt.trim().slice(0, 240)
+        : `Would you like me to add ${origin} → ${destination} for ${departureDate} to your watchlist?`,
+  }
+}
+
+function parseLucyStructuredChatResponse(rawText: string): LucyStructuredChatResponse {
+  const fallbackReply =
+    rawText.trim() ||
+    "I’m here, but I could not generate a clean response."
+
+  function parseJsonCandidate(candidate: string) {
+    try {
+      return JSON.parse(candidate)
+    } catch {
+      return null
+    }
+  }
+
+  const parsedDirect = parseJsonCandidate(rawText)
+  const parsedFromBlock =
+    parsedDirect ??
+    parseJsonCandidate(rawText.match(/\{[\s\S]*\}/)?.[0] ?? "")
+
+  if (!parsedFromBlock || typeof parsedFromBlock !== "object") {
+    return {
+      reply: fallbackReply,
+      action: null,
+    }
+  }
+
+  const input = parsedFromBlock as {
+    reply?: unknown
+    action?: unknown
+    suggestedAction?: unknown
+  }
+
+  const reply =
+    typeof input.reply === "string" && input.reply.trim()
+      ? input.reply.trim().slice(0, 1800)
+      : fallbackReply
+
+  return {
+    reply,
+    action: cleanLucySuggestedAction(input.action ?? input.suggestedAction),
+  }
+}
+
 const FLIGHT_ATTENDANT_SYSTEM_PROMPT = `
 You are Lucy, the Skysirv Flight Attendant, a premium AI travel intelligence assistant built into Skysirv.
 
@@ -149,9 +262,11 @@ Do not answer general trivia, coding, homework, legal, medical, financial, lifes
 For off-topic questions, keep the reply brief and say what Lucy can help with instead.
 Do not claim that a route has been added to a watchlist unless the backend explicitly confirms that action.
 Do not claim access to live flight inventory, live airline availability, or live booking data unless it is provided in the prompt.
-If a user asks Lucy to track, add, remove, update, or manage a route, do not claim the action was completed unless backend action confirmation is provided.
-For now, Lucy should explain that dashboard actions must be completed through the dashboard controls.
-Lucy may confirm whether the user’s plan has enough route capacity and may restate the route in a clean format.
+If a user asks Lucy to track, add, remove, update, manage, or remember a route, treat that as an in-scope Skysirv route-management request.
+Do not claim a watchlist action was completed unless backend or frontend action confirmation is provided.
+When a user mentions a route with enough detail to identify origin, destination, and departure date, Lucy may ask whether the user would like that route added to the watchlist.
+For preferred route memory, do not claim the preference was saved unless a dedicated preferred-route backend action confirms it.
+If preferred-route storage is not available, Lucy may prepare the route cleanly and offer to add it to the watchlist instead.
 Do not say “If you want...” as a closing phrase.
 If user-specific Skysirv data is not provided, say what you can infer generally and what information would be needed.
 
@@ -560,6 +675,37 @@ Business includes Advanced Lucy access and unlimited tracked routes.
 
 If the frontend dashboard tier hint conflicts with the subscription/account context, trust the subscription/account context.
 
+Current server date: ${new Date().toISOString().slice(0, 10)}
+
+Structured response requirement:
+Return strict JSON only.
+Do not include markdown.
+Do not include commentary outside the JSON.
+
+The JSON must match this shape:
+{
+  "reply": "string",
+  "action": null | {
+    "type": "add_watchlist_route",
+    "status": "needs_confirmation",
+    "origin": "BOS",
+    "destination": "BCN",
+    "departureDate": "YYYY-MM-DD",
+    "routeLabel": "Boston (BOS) → Barcelona (BCN)",
+    "confirmationPrompt": "Would you like me to add Boston (BOS) → Barcelona (BCN) for YYYY-MM-DD to your watchlist?"
+  }
+}
+
+Action rules:
+- Only include an action when the user has provided or confirmed a clear origin airport, destination airport, and departure date.
+- Use IATA airport codes for origin and destination.
+- Use YYYY-MM-DD for departureDate.
+- The action status must be "needs_confirmation".
+- Never claim the route has been added in the reply when action status is "needs_confirmation".
+- Ask the user for confirmation in the reply when returning an add_watchlist_route action.
+- If the user is asking about a route but the airport code or date is unclear, ask one concise follow-up question and return action: null.
+- If the user asks to remember a preferred route, explain that preferred-route memory must be saved through a connected Skysirv preference action, and offer to add the date-specific route to the watchlist if a date is known.
+
 The following is the current page-session conversation. Respond to the latest user message while respecting the prior context.`,
     },
     ...conversation.map((message) => ({
@@ -619,10 +765,13 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         }),
       })
 
+      const lucyResponse = parseLucyStructuredChatResponse(response.output_text)
+
       return {
         success: true,
         model,
-        reply: response.output_text,
+        reply: lucyResponse.reply,
+        action: lucyResponse.action,
       }
     }
   )
