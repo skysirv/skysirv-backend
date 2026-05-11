@@ -21,7 +21,7 @@ type FlightAttendantChatBody = {
   tier?: "free" | "pro" | "business"
 }
 
-type LucySuggestedAction = {
+type LucyWatchlistAction = {
   type: "add_watchlist_route"
   status: "needs_confirmation"
   origin: string
@@ -30,6 +30,28 @@ type LucySuggestedAction = {
   routeLabel: string
   confirmationPrompt: string
 }
+
+type LucyPreferredAirportsAction = {
+  type: "save_preferred_airports"
+  status: "needs_confirmation"
+  airportCodes: string[]
+  airportLabels: string[]
+  confirmationPrompt: string
+}
+
+type LucyPreferredRouteAction = {
+  type: "save_preferred_route"
+  status: "needs_confirmation"
+  origin: string
+  destination: string
+  routeLabel: string
+  confirmationPrompt: string
+}
+
+type LucySuggestedAction =
+  | LucyWatchlistAction
+  | LucyPreferredAirportsAction
+  | LucyPreferredRouteAction
 
 type LucyStructuredChatResponse = {
   reply: string
@@ -252,10 +274,10 @@ function getAmbiguousAirportReferenceForPrompt() {
     .join("\n")
 }
 
-function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
+function cleanLucyWatchlistAction(value: unknown): LucyWatchlistAction | null {
   if (!value || typeof value !== "object") return null
 
-  const input = value as Partial<LucySuggestedAction>
+  const input = value as Partial<LucyWatchlistAction>
 
   if (input.type !== "add_watchlist_route") return null
 
@@ -285,6 +307,108 @@ function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
         ? input.confirmationPrompt.trim().slice(0, 240)
         : `Would you like me to add ${originLabel} → ${destinationLabel} for ${departureDate} to your watchlist?`,
   }
+}
+
+function cleanLucyPreferredAirportsAction(
+  value: unknown
+): LucyPreferredAirportsAction | null {
+  if (!value || typeof value !== "object") return null
+
+  const input = value as {
+    type?: unknown
+    airportCodes?: unknown
+    airportCode?: unknown
+    confirmationPrompt?: unknown
+  }
+
+  if (input.type !== "save_preferred_airports") return null
+
+  const rawAirportCodes = Array.isArray(input.airportCodes)
+    ? input.airportCodes
+    : input.airportCode
+      ? [input.airportCode]
+      : []
+
+  const airportCodes = Array.from(
+    new Set(
+      rawAirportCodes
+        .map(cleanAirportCode)
+        .filter((code): code is string => Boolean(code))
+    )
+  )
+
+  if (!airportCodes.length) return null
+
+  const airportLabels = airportCodes.map(getAirportDisplayLabel)
+
+  return {
+    type: "save_preferred_airports",
+    status: "needs_confirmation",
+    airportCodes,
+    airportLabels,
+    confirmationPrompt:
+      typeof input.confirmationPrompt === "string" &&
+        input.confirmationPrompt.trim()
+        ? input.confirmationPrompt.trim().slice(0, 240)
+        : `Would you like me to save ${airportLabels.join(
+          " and "
+        )} as preferred airports?`,
+  }
+}
+
+function cleanLucyPreferredRouteAction(
+  value: unknown
+): LucyPreferredRouteAction | null {
+  if (!value || typeof value !== "object") return null
+
+  const input = value as Partial<LucyPreferredRouteAction>
+
+  if (input.type !== "save_preferred_route") return null
+
+  const origin = cleanAirportCode(input.origin)
+  const destination = cleanAirportCode(input.destination)
+
+  if (!origin || !destination) return null
+  if (origin === destination) return null
+
+  const originLabel = getAirportDisplayLabel(origin)
+  const destinationLabel = getAirportDisplayLabel(destination)
+
+  return {
+    type: "save_preferred_route",
+    status: "needs_confirmation",
+    origin,
+    destination,
+    routeLabel:
+      typeof input.routeLabel === "string" && input.routeLabel.trim()
+        ? input.routeLabel.trim().slice(0, 120)
+        : `${originLabel} → ${destinationLabel}`,
+    confirmationPrompt:
+      typeof input.confirmationPrompt === "string" &&
+        input.confirmationPrompt.trim()
+        ? input.confirmationPrompt.trim().slice(0, 240)
+        : `Would you like me to save ${originLabel} → ${destinationLabel} as a preferred route?`,
+  }
+}
+
+function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
+  if (!value || typeof value !== "object") return null
+
+  const input = value as { type?: unknown }
+
+  if (input.type === "add_watchlist_route") {
+    return cleanLucyWatchlistAction(value)
+  }
+
+  if (input.type === "save_preferred_airports") {
+    return cleanLucyPreferredAirportsAction(value)
+  }
+
+  if (input.type === "save_preferred_route") {
+    return cleanLucyPreferredRouteAction(value)
+  }
+
+  return null
 }
 
 function parseLucyStructuredChatResponse(rawText: string): LucyStructuredChatResponse {
@@ -803,6 +927,19 @@ The JSON must match this shape:
     "departureDate": "MM-DD-YYYY",
     "routeLabel": "Boston (BOS) → Barcelona (BCN)",
     "confirmationPrompt": "Would you like me to add Boston (BOS) → Barcelona (BCN) for MM-DD-YYYY to your watchlist?"
+  } | {
+    "type": "save_preferred_airports",
+    "status": "needs_confirmation",
+    "airportCodes": ["JFK", "LHR"],
+    "airportLabels": ["New York (JFK)", "London (LHR)"],
+    "confirmationPrompt": "Would you like me to save New York (JFK) and London (LHR) as preferred airports?"
+  } | {
+    "type": "save_preferred_route",
+    "status": "needs_confirmation",
+    "origin": "JFK",
+    "destination": "LHR",
+    "routeLabel": "New York (JFK) → London (LHR)",
+    "confirmationPrompt": "Would you like me to save New York (JFK) → London (LHR) as a preferred route?"
   }
 }
 
@@ -815,6 +952,15 @@ Action rules:
 - When asking for confirmation, include the same MM-DD-YYYY date in the action object.
 - Do not say "confirmed", "preparing", or "I’m preparing" when the user has not yet completed the backend watchlist action.
 - The correct wording before backend confirmation is: "Would you like me to add this route to your watchlist?"
+
+Preferred airport and preferred route rules:
+- If the user asks Lucy to remember, save, or use airports as preferred airports, return a save_preferred_airports action when the airport codes are clear.
+- If the user says "these airports" or "those airports", infer from the current page-session conversation only if the airports were clearly discussed earlier.
+- If the preferred airports are unclear, ask one concise follow-up question and return action: null.
+- If the user asks Lucy to remember or save a route pair without needing a departure date, return a save_preferred_route action.
+- Preferred routes do not require a departure date.
+- Never claim preferred airports or preferred routes have been saved unless the frontend/backend confirms the save action.
+- Before backend confirmation, ask: "Would you like me to save this as a preferred airport or route?"
 
 The following is the current page-session conversation. Respond to the latest user message while respecting the prior context.`,
     },
