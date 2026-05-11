@@ -215,6 +215,32 @@ export interface AirportIndoorFeaturesTable {
   updated_at?: Date
 }
 
+export interface UserPreferredAirportsTable {
+  id: string
+  user_id: string
+  airport_code: string
+  airport_name: string
+  city: string
+  country: string
+  created_at: Date
+  updated_at: Date
+}
+
+export interface UserPreferredRoutesTable {
+  id: string
+  user_id: string
+  origin: string
+  destination: string
+  origin_airport_name: string
+  destination_airport_name: string
+  origin_city: string
+  destination_city: string
+  origin_country: string
+  destination_country: string
+  created_at: Date
+  updated_at: Date
+}
+
 export interface Database {
   users: UsersTable
   email_verification_tokens: EmailVerificationTokensTable
@@ -229,6 +255,8 @@ export interface Database {
   trip_segments: TripSegmentsTable
   user_intelligence_wrapped: UserIntelligenceWrappedTable
   saved_flights: SavedFlightsTable
+  user_preferred_airports: UserPreferredAirportsTable
+  user_preferred_routes: UserPreferredRoutesTable
   airport_indoor_features: AirportIndoorFeaturesTable
   stripe_events: StripeEventsTable
   admin_activity: AdminActivityTable
