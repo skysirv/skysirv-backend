@@ -5,6 +5,7 @@ import {
   openai,
 } from "../services/openai.js"
 import { getUserWatchlist } from "../db/watchlist.js"
+import { airportDirectory } from "../data/airports.js"
 
 type FlightAttendantRole = "user" | "assistant"
 
@@ -35,7 +36,7 @@ type LucyStructuredChatResponse = {
   action: LucySuggestedAction | null
 }
 
-const MAX_CONVERSATION_MESSAGES = 10
+const MAX_CONVERSATION_MESSAGES = 20
 const MAX_MESSAGE_LENGTH = 2500
 
 type LucyDashboardSummary = {
@@ -142,6 +143,8 @@ function cleanAirportCode(value: unknown) {
 
   if (!/^[A-Z0-9]{3,4}$/.test(code)) return null
 
+  if (!airportDirectory[code]) return null
+
   return code
 }
 
@@ -150,13 +153,74 @@ function cleanDepartureDate(value: unknown) {
 
   const date = value.trim()
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+  if (!/^\d{2}-\d{2}-\d{4}$/.test(date)) return null
 
   const parsed = new Date(`${date}T00:00:00.000Z`)
 
   if (Number.isNaN(parsed.getTime())) return null
 
   return date
+}
+
+function getAirportDisplayLabel(code: string) {
+  const airport = airportDirectory[code]
+
+  if (!airport) return code
+
+  return `${airport.city} (${code})`
+}
+
+function getAirportReferenceForPrompt() {
+  return Object.entries(airportDirectory)
+    .sort(([codeA, airportA], [codeB, airportB]) => {
+      const countryCompare = airportA.country.localeCompare(airportB.country)
+      if (countryCompare !== 0) return countryCompare
+
+      const cityCompare = airportA.city.localeCompare(airportB.city)
+      if (cityCompare !== 0) return cityCompare
+
+      return codeA.localeCompare(codeB)
+    })
+    .map(
+      ([code, airport]) =>
+        `${code}: ${airport.city}, ${airport.country} — ${airport.name}`
+    )
+    .join("\n")
+}
+
+function getAmbiguousAirportReferenceForPrompt() {
+  const groupedByCity = Object.entries(airportDirectory).reduce<
+    Record<string, Array<{ code: string; city: string; country: string; name: string }>>
+  >((groups, [code, airport]) => {
+    const key = airport.city.trim().toLowerCase()
+
+    if (!groups[key]) {
+      groups[key] = []
+    }
+
+    groups[key].push({
+      code,
+      city: airport.city,
+      country: airport.country,
+      name: airport.name,
+    })
+
+    return groups
+  }, {})
+
+  return Object.values(groupedByCity)
+    .filter((airports) => airports.length > 1)
+    .map((airports) => {
+      const city = airports[0]?.city ?? "Unknown city"
+
+      const options = airports
+        .sort((a, b) => a.code.localeCompare(b.code))
+        .map((airport) => `${airport.code} ${airport.name}, ${airport.country}`)
+        .join("; ")
+
+      return `${city}: ${options}`
+    })
+    .join("\n")
 }
 
 function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
@@ -173,6 +237,9 @@ function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
   if (!origin || !destination || !departureDate) return null
   if (origin === destination) return null
 
+  const originLabel = getAirportDisplayLabel(origin)
+  const destinationLabel = getAirportDisplayLabel(destination)
+
   return {
     type: "add_watchlist_route",
     status: "needs_confirmation",
@@ -182,12 +249,12 @@ function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
     routeLabel:
       typeof input.routeLabel === "string" && input.routeLabel.trim()
         ? input.routeLabel.trim().slice(0, 120)
-        : `${origin} → ${destination}`,
+        : `${originLabel} → ${destinationLabel}`,
     confirmationPrompt:
       typeof input.confirmationPrompt === "string" &&
         input.confirmationPrompt.trim()
         ? input.confirmationPrompt.trim().slice(0, 240)
-        : `Would you like me to add ${origin} → ${destination} for ${departureDate} to your watchlist?`,
+        : `Would you like me to add ${originLabel} → ${destinationLabel} for ${departureDate} to your watchlist?`,
   }
 }
 
@@ -677,6 +744,20 @@ If the frontend dashboard tier hint conflicts with the subscription/account cont
 
 Current server date: ${new Date().toISOString().slice(0, 10)}
 
+Supported Skysirv airport directory:
+${getAirportReferenceForPrompt()}
+
+Known multi-airport or ambiguous cities:
+${getAmbiguousAirportReferenceForPrompt() || "none"}
+
+Airport resolution rules:
+- Use only airport codes from the Supported Skysirv airport directory.
+- If the user provides an airport code, validate and use that code.
+- If the user provides a city with exactly one supported airport, use that airport code.
+- If the city has multiple supported airports, ask which airport they want and return action: null.
+- Do not guess between airports in ambiguous cities such as New York, London, Paris, Milan, Washington, Chicago, Buenos Aires, Sao Paulo, Rio de Janeiro, Seoul, Tokyo, Osaka, Beijing, or Shanghai.
+- If the city or airport is not in the supported directory, ask the user for the closest supported airport code and return action: null.
+
 Structured response requirement:
 Return strict JSON only.
 Do not include markdown.
@@ -690,16 +771,16 @@ The JSON must match this shape:
     "status": "needs_confirmation",
     "origin": "BOS",
     "destination": "BCN",
-    "departureDate": "YYYY-MM-DD",
+    "departureDate": "MM-DD-YYYY",
     "routeLabel": "Boston (BOS) → Barcelona (BCN)",
-    "confirmationPrompt": "Would you like me to add Boston (BOS) → Barcelona (BCN) for YYYY-MM-DD to your watchlist?"
+    "confirmationPrompt": "Would you like me to add Boston (BOS) → Barcelona (BCN) for MM-DD-YYYY to your watchlist?"
   }
 }
 
 Action rules:
 - Only include an action when the user has provided or confirmed a clear origin airport, destination airport, and departure date.
-- Use IATA airport codes for origin and destination.
-- Use YYYY-MM-DD for departureDate.
+- Use supported Skysirv airport codes from the provided airport directory for origin and destination.
+- Use MM-DD-YYYY for departureDate.
 - The action status must be "needs_confirmation".
 - Never claim the route has been added in the reply when action status is "needs_confirmation".
 - Ask the user for confirmation in the reply when returning an add_watchlist_route action.
