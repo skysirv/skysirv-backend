@@ -485,8 +485,10 @@ Do not claim access to live flight inventory, live airline availability, or live
 If a user asks Lucy to track, add, remove, update, manage, or remember a route, treat that as an in-scope Skysirv route-management request.
 Do not claim a watchlist action was completed unless backend or frontend action confirmation is provided.
 When a user mentions a route with enough detail to identify origin, destination, and departure date, Lucy may ask whether the user would like that route added to the watchlist.
-For preferred route memory, do not claim the preference was saved unless a dedicated preferred-route backend action confirms it.
-If preferred-route storage is not available, Lucy may prepare the route cleanly and offer to add it to the watchlist instead.
+For preferred airport and preferred route memory, do not claim the preference was saved unless a dedicated backend action confirms it.
+Preferred airports and preferred routes are in-scope Skysirv account preferences.
+If the user asks how to save preferred airports or preferred routes, explain that Lucy can save them directly after confirmation when the airport codes or route pair are clear.
+If the user asks whether saved preferred routes will be remembered next time, explain that account-level preferred routes are stored in Skysirv and can be used in future dashboard sessions once saved.
 Do not say “If you want...” as a closing phrase.
 If user-specific Skysirv data is not provided, say what you can infer generally and what information would be needed.
 
@@ -744,6 +746,38 @@ async function getLucyAccountContext({
 
   const currentTrackedRoutes = Number(watchlistCountResult?.count ?? 0)
 
+  const preferredAirports = await app.db
+    .selectFrom("user_preferred_airports")
+    .select([
+      "airport_code",
+      "airport_name",
+      "city",
+      "country",
+      "created_at",
+      "updated_at",
+    ])
+    .where("user_id", "=", userId)
+    .orderBy("created_at", "desc")
+    .execute()
+
+  const preferredRoutes = await app.db
+    .selectFrom("user_preferred_routes")
+    .select([
+      "origin",
+      "destination",
+      "origin_airport_name",
+      "destination_airport_name",
+      "origin_city",
+      "destination_city",
+      "origin_country",
+      "destination_country",
+      "created_at",
+      "updated_at",
+    ])
+    .where("user_id", "=", userId)
+    .orderBy("created_at", "desc")
+    .execute()
+
   const remainingTrackedRoutes =
     routeLimit.value === null
       ? "unlimited"
@@ -765,6 +799,8 @@ async function getLucyAccountContext({
     routeLimitValue: routeLimit.value,
     currentTrackedRoutes,
     remainingTrackedRoutes,
+    preferredAirports,
+    preferredRoutes,
     frontendTier: frontendTier || "not provided",
   }
 }
@@ -884,9 +920,42 @@ Tracked route limit: ${accountContext.routeLimitLabel}
 Current tracked routes: ${accountContext.currentTrackedRoutes}
 Remaining tracked routes: ${accountContext.remainingTrackedRoutes}
 
+Saved preferred airport context:
+${JSON.stringify(
+        accountContext.preferredAirports.map((airport) => ({
+          code: airport.airport_code,
+          city: airport.city,
+          country: airport.country,
+          name: airport.airport_name,
+        })),
+        null,
+        2
+      )}
+
+Saved preferred route context:
+${JSON.stringify(
+        accountContext.preferredRoutes.map((route) => ({
+          origin: route.origin,
+          destination: route.destination,
+          label: `${route.origin_city} (${route.origin}) → ${route.destination_city} (${route.destination})`,
+          originAirportName: route.origin_airport_name,
+          destinationAirportName: route.destination_airport_name,
+        })),
+        null,
+        2
+      )}
+
 Frontend dashboard tier hint: ${accountContext.frontendTier}
 
-Use the subscription/account context above as the source of truth when answering questions about the user's plan, Lucy access level, route limit, tracked route count, remaining routes, subscription status, or membership duration.
+Use the subscription/account context above as the source of truth when answering questions about the user's plan, Lucy access level, route limit, tracked route count, remaining routes, subscription status, membership duration, saved preferred airports, or saved preferred routes.
+
+When the user asks what their preferred airports or preferred routes are, answer from the saved preferred airport context and saved preferred route context above.
+
+If saved preferred routes exist, do not say you only know them from this session.
+
+If saved preferred airports or preferred routes are empty, say none are saved yet and offer to save one.
+
+Preferred airports and preferred routes are account-level Skysirv preferences. Once saved through the backend, they are available in future dashboard sessions.
 
 Important plan facts:
 Free includes Limited Lucy access and up to 3 tracked routes.
