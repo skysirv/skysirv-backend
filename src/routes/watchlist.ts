@@ -7,6 +7,47 @@ import { db } from "../db/kysely.js"
 import { env } from "../config/env.js"
 import { QUEUE_NAMES } from "../infra/queues.js"
 
+function normalizeWatchlistDepartureDateForStorage(value: string) {
+  const rawDate = value.trim()
+
+  let year: number | null = null
+  let month: number | null = null
+  let day: number | null = null
+
+  const isoDateMatch = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const usDateMatch = rawDate.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
+
+  if (isoDateMatch) {
+    year = Number(isoDateMatch[1])
+    month = Number(isoDateMatch[2])
+    day = Number(isoDateMatch[3])
+  } else if (usDateMatch) {
+    month = Number(usDateMatch[1])
+    day = Number(usDateMatch[2])
+    year = Number(usDateMatch[3])
+  } else {
+    return null
+  }
+
+  if (!year || !month || !day) return null
+
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() + 1 !== month ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null
+  }
+
+  const formattedMonth = String(month).padStart(2, "0")
+  const formattedDay = String(day).padStart(2, "0")
+
+  return `${year}-${formattedMonth}-${formattedDay}`
+}
+
 export async function watchlistRoutes(app: FastifyInstance) {
   const monitorQueue = new Queue(QUEUE_NAMES.monitor, {
     connection: { url: env.REDIS_URL },
@@ -61,12 +102,14 @@ export async function watchlistRoutes(app: FastifyInstance) {
       console.log("BODY:", body)
       console.log("LEGS:", legs)
 
-      // ✅ VALIDATION
+      // ✅ VALIDATION + DATE NORMALIZATION
       if (!legs.length) {
         return reply.status(400).send({
           error: "Missing required fields",
         })
       }
+
+      const normalizedLegs: WatchlistLeg[] = []
 
       for (const leg of legs) {
         if (!leg.origin || !leg.destination || !leg.departureDate) {
@@ -77,13 +120,30 @@ export async function watchlistRoutes(app: FastifyInstance) {
 
         const o = leg.origin.trim().toUpperCase()
         const d = leg.destination.trim().toUpperCase()
+        const normalizedDepartureDate = normalizeWatchlistDepartureDateForStorage(
+          leg.departureDate
+        )
 
         if (o === d) {
           return reply.status(400).send({
             error: "Origin and destination cannot be the same airport.",
           })
         }
+
+        if (!normalizedDepartureDate) {
+          return reply.status(400).send({
+            error: "Departure date must use MM-DD-YYYY.",
+          })
+        }
+
+        normalizedLegs.push({
+          origin: o,
+          destination: d,
+          departureDate: normalizedDepartureDate,
+        })
       }
+
+      legs = normalizedLegs
 
       const userId = user.id
 

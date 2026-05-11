@@ -151,15 +151,44 @@ function cleanAirportCode(value: unknown) {
 function cleanDepartureDate(value: unknown) {
   if (typeof value !== "string") return null
 
-  const date = value.trim()
+  const rawDate = value.trim()
 
-  if (!/^\d{2}-\d{2}-\d{4}$/.test(date)) return null
+  let year: number | null = null
+  let month: number | null = null
+  let day: number | null = null
 
-  const parsed = new Date(`${date}T00:00:00.000Z`)
+  const isoDateMatch = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const usDateMatch = rawDate.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
 
-  if (Number.isNaN(parsed.getTime())) return null
+  if (isoDateMatch) {
+    year = Number(isoDateMatch[1])
+    month = Number(isoDateMatch[2])
+    day = Number(isoDateMatch[3])
+  } else if (usDateMatch) {
+    month = Number(usDateMatch[1])
+    day = Number(usDateMatch[2])
+    year = Number(usDateMatch[3])
+  } else {
+    return null
+  }
 
-  return date
+  if (!year || !month || !day) return null
+
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() + 1 !== month ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null
+  }
+
+  const formattedMonth = String(month).padStart(2, "0")
+  const formattedDay = String(day).padStart(2, "0")
+
+  return `${formattedMonth}-${formattedDay}-${year}`
 }
 
 function getAirportDisplayLabel(code: string) {
@@ -781,11 +810,11 @@ Action rules:
 - Only include an action when the user has provided or confirmed a clear origin airport, destination airport, and departure date.
 - Use supported Skysirv airport codes from the provided airport directory for origin and destination.
 - Use MM-DD-YYYY for departureDate.
-- The action status must be "needs_confirmation".
-- Never claim the route has been added in the reply when action status is "needs_confirmation".
-- Ask the user for confirmation in the reply when returning an add_watchlist_route action.
-- If the user is asking about a route but the airport code or date is unclear, ask one concise follow-up question and return action: null.
-- If the user asks to remember a preferred route, explain that preferred-route memory must be saved through a connected Skysirv preference action, and offer to add the date-specific route to the watchlist if a date is known.
+- Never use YYYY-MM-DD, MM/DD/YYYY, or natural language dates inside action.departureDate.
+- For example, May 22, 2026 must be returned as "05-22-2026".
+- When asking for confirmation, include the same MM-DD-YYYY date in the action object.
+- Do not say "confirmed", "preparing", or "I’m preparing" when the user has not yet completed the backend watchlist action.
+- The correct wording before backend confirmation is: "Would you like me to add this route to your watchlist?"
 
 The following is the current page-session conversation. Respond to the latest user message while respecting the prior context.`,
     },
