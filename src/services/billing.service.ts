@@ -20,6 +20,11 @@ export class BillingService {
       return
     }
 
+    if (event.type === "customer.subscription.updated") {
+      await this.handleSubscriptionUpdated(event, trx)
+      return
+    }
+
     if (event.type === "customer.subscription.deleted") {
       await this.handleSubscriptionDeleted(event, trx)
       return
@@ -130,6 +135,45 @@ export class BillingService {
       })
       .where("stripe_subscription_id", "=", stripeSubscriptionId)
       .execute()
+  }
+
+  private getStripeTimestampDate(timestamp: unknown): Date | null {
+    if (typeof timestamp !== "number") {
+      return null
+    }
+
+    return new Date(timestamp * 1000)
+  }
+
+  private async handleSubscriptionUpdated(
+    event: Stripe.Event,
+    trx: Transaction<Database>
+  ) {
+    const subscription = event.data.object as any
+
+    const periodEnd = this.getStripeTimestampDate(subscription.current_period_end)
+    const cancelAt = this.getStripeTimestampDate(subscription.cancel_at)
+    const canceledAt = this.getStripeTimestampDate(subscription.canceled_at)
+    const cancelAtPeriodEnd = Boolean(subscription.cancel_at_period_end)
+
+    await trx
+      .updateTable("subscriptions")
+      .set({
+        status: subscription.status,
+        current_period_end: periodEnd,
+        cancel_at_period_end: cancelAtPeriodEnd,
+        cancel_at: cancelAt,
+        canceled_at: canceledAt,
+      } as any)
+      .where("stripe_subscription_id", "=", subscription.id)
+      .execute()
+
+    if (cancelAtPeriodEnd) {
+      await logAdminActivity(
+        trx,
+        `Subscription scheduled to cancel: ${subscription.id}`
+      )
+    }
   }
 
   private async handleSubscriptionDeleted(
