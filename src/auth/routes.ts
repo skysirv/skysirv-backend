@@ -375,4 +375,105 @@ export async function authRoutes(app: FastifyInstance) {
       }
     }
   )
+  /**
+ * DELETE CURRENT USER ACCOUNT
+ * DELETE /auth/account
+ */
+  app.delete(
+    "/auth/account",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const authUser = request.user as {
+        id: string
+        email: string
+      }
+
+      const recurringPaidPlanIds = [
+        "pro_monthly",
+        "pro_yearly",
+        "business_monthly",
+        "business_yearly",
+      ]
+
+      const activeSubscription = await app.db
+        .selectFrom("subscriptions")
+        .select(["plan_id", "status", "stripe_subscription_id"])
+        .where("user_id", "=", authUser.id)
+        .where("status", "=", "active")
+        .orderBy("created_at", "desc")
+        .executeTakeFirst()
+
+      const hasStripeManagedSubscription =
+        activeSubscription &&
+        recurringPaidPlanIds.includes(activeSubscription.plan_id) &&
+        activeSubscription.stripe_subscription_id
+
+      if (hasStripeManagedSubscription) {
+        return reply.status(400).send({
+          error: "Please cancel your paid subscription before deleting your account.",
+        })
+      }
+
+      await app.db.transaction().execute(async (trx) => {
+        await trx
+          .deleteFrom("user_monitors")
+          .where("user_id", "=", authUser.id)
+          .execute()
+
+        await trx
+          .deleteFrom("alerts")
+          .where("user_id", "=", authUser.id)
+          .execute()
+
+        await trx
+          .deleteFrom("trip_segments")
+          .where("user_id", "=", authUser.id)
+          .execute()
+
+        await trx
+          .deleteFrom("trips")
+          .where("user_id", "=", authUser.id)
+          .execute()
+
+        await trx
+          .deleteFrom("user_intelligence_wrapped")
+          .where("user_id", "=", authUser.id)
+          .execute()
+
+        await trx
+          .deleteFrom("watchlist")
+          .where("user_id", "=", authUser.id)
+          .execute()
+
+        await trx
+          .deleteFrom("saved_flights")
+          .where("user_id", "=", authUser.id)
+          .execute()
+
+        await trx
+          .deleteFrom("user_preferred_airports")
+          .where("user_id", "=", authUser.id)
+          .execute()
+
+        await trx
+          .deleteFrom("user_preferred_routes")
+          .where("user_id", "=", authUser.id)
+          .execute()
+
+        await trx
+          .deleteFrom("users")
+          .where("id", "=", authUser.id)
+          .execute()
+      })
+
+      await logAdminActivity(
+        app.db,
+        `Account deleted: ${authUser.email ?? authUser.id}`
+      )
+
+      return {
+        success: true,
+      }
+    }
+  )
 }
