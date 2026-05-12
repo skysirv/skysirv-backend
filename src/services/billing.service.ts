@@ -151,7 +151,11 @@ export class BillingService {
   ) {
     const subscription = event.data.object as any
 
-    const periodEnd = this.getStripeTimestampDate(subscription.current_period_end)
+    const periodEnd = this.getStripeTimestampDate(
+      subscription.current_period_end ??
+      subscription.items?.data?.[0]?.current_period_end ??
+      subscription.cancel_at
+    )
     const cancelAt = this.getStripeTimestampDate(subscription.cancel_at)
     const canceledAt = this.getStripeTimestampDate(subscription.canceled_at)
     const cancelAtPeriodEnd = Boolean(subscription.cancel_at_period_end)
