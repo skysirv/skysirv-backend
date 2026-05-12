@@ -339,6 +339,9 @@ export async function authRoutes(app: FastifyInstance) {
           "billing_interval",
           "stripe_subscription_id",
           "current_period_end",
+          "cancel_at_period_end",
+          "cancel_at",
+          "canceled_at",
           "created_at"
         ])
         .where("user_id", "=", authUser.id)
@@ -363,6 +366,9 @@ export async function authRoutes(app: FastifyInstance) {
             billing_interval: activeSubscription.billing_interval,
             stripe_subscription_id: activeSubscription.stripe_subscription_id,
             current_period_end: activeSubscription.current_period_end,
+            cancel_at_period_end: activeSubscription.cancel_at_period_end,
+            cancel_at: activeSubscription.cancel_at,
+            canceled_at: activeSubscription.canceled_at,
             created_at: activeSubscription.created_at
           }
           : null

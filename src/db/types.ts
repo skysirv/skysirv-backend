@@ -36,6 +36,9 @@ export interface SubscriptionsTable {
   status: string
   billing_interval: string | null
   current_period_end: Date | null
+  cancel_at_period_end?: boolean
+  cancel_at?: Date | null
+  canceled_at?: Date | null
   created_at?: Date
   stripe_subscription_id: string | null
 }
