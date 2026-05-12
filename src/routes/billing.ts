@@ -156,6 +156,8 @@ export async function billingRoutes(app: FastifyInstance) {
             "stripe_subscription_id",
           ])
           .where("user_id", "=", user.id)
+          .where("status", "=", "active")
+          .orderBy("created_at", "desc")
           .executeTakeFirst()
 
         if (!subscription) {
