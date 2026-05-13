@@ -86,8 +86,17 @@ export async function billingRoutes(app: FastifyInstance) {
           })
         }
 
+        const userRecord = await app.db
+          .selectFrom("users")
+          .select(["email"])
+          .where("id", "=", user.id)
+          .executeTakeFirst()
+
+        const email = userRecord?.email ?? user.email ?? user.id
+
         const session = await stripe.checkout.sessions.create({
           mode: "subscription",
+          customer_email: email,
 
           line_items: [
             {
@@ -105,13 +114,6 @@ export async function billingRoutes(app: FastifyInstance) {
           },
         })
 
-        const userRecord = await app.db
-          .selectFrom("users")
-          .select(["email"])
-          .where("id", "=", user.id)
-          .executeTakeFirst()
-
-        const email = userRecord?.email ?? user.email ?? user.id
         const planLabel = formatPlanLabel(body.plan, body.billing)
 
         await logAdminActivity(app.db, `Checkout started: ${email} — ${planLabel}`)
