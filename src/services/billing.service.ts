@@ -54,11 +54,11 @@ export class BillingService {
 
     const stripeSubAny = stripeSub as any
 
-    let periodEnd: Date | null = null
-
-    if (stripeSubAny.current_period_end) {
-      periodEnd = new Date(stripeSubAny.current_period_end * 1000)
-    }
+    const periodEnd = this.getStripeTimestampDate(
+      stripeSubAny.current_period_end ??
+      stripeSubAny.items?.data?.[0]?.current_period_end ??
+      stripeSubAny.cancel_at
+    )
 
     const existing = await trx
       .selectFrom("subscriptions")
@@ -121,11 +121,11 @@ export class BillingService {
 
     const stripeSubAny = stripeSub as any
 
-    let periodEnd: Date | null = null
-
-    if (stripeSubAny.current_period_end) {
-      periodEnd = new Date(stripeSubAny.current_period_end * 1000)
-    }
+    const periodEnd = this.getStripeTimestampDate(
+      stripeSubAny.current_period_end ??
+      stripeSubAny.items?.data?.[0]?.current_period_end ??
+      stripeSubAny.cancel_at
+    )
 
     await trx
       .updateTable("subscriptions")
