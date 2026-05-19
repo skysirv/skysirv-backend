@@ -713,7 +713,7 @@ async function getLucyAccountContext({
 }) {
   const user = await app.db
     .selectFrom("users")
-    .select(["id", "email", "created_at", "is_verified"])
+    .select(["id", "email", "created_at", "is_verified", "first_name"])
     .where("id", "=", userId)
     .executeTakeFirst()
 
@@ -785,6 +785,7 @@ async function getLucyAccountContext({
 
   return {
     userEmail: user?.email || "unknown",
+    firstName: user?.first_name || null,
     accountCreatedAt: user?.created_at || null,
     membershipDuration: formatMembershipDuration(user?.created_at),
     isVerified: Boolean(user?.is_verified),
@@ -1046,19 +1047,68 @@ const LUCY_REALTIME_MODEL =
 const LUCY_REALTIME_VOICE =
   process.env.OPENAI_REALTIME_VOICE || "marin"
 
-function buildLucyRealtimeInstructions(planDisplayName: string) {
+function buildLucyRealtimeInstructions(
+  accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
+) {
   return `
-You are Lucy, the Skysirv Flight Attendant, speaking live with an authenticated Skysirv ${planDisplayName} user.
+You are Lucy, the Skysirv Flight Attendant, speaking live with an authenticated Skysirv ${accountContext.planDisplayName} user.
 
-Stay focused on Skysirv, airfare intelligence, route monitoring, watchlists, fare signals, Skyscore, booking confidence, plans, subscriptions, real-time updates, real-time activity alerts, and travel decision support.
+User/account context:
+First name: ${accountContext.firstName || "not saved yet"}
+Email: ${accountContext.userEmail}
+Plan: ${accountContext.planDisplayName}
+Lucy access level: ${accountContext.lucyAccessLevel}
+Verified account: ${accountContext.isVerified ? "yes" : "no"}
+Membership duration: ${accountContext.membershipDuration}
+Tracked routes: ${accountContext.currentTrackedRoutes}
+Route limit: ${accountContext.routeLimitLabel}
+Remaining tracked routes: ${accountContext.remainingTrackedRoutes}
+Billing interval: ${accountContext.billingInterval}
+Subscription status: ${accountContext.subscriptionStatus}
 
-Sound warm, coy, polished, concise, premium, and conversational. Do not sound like a generic chatbot.
+Saved preferred airports:
+${JSON.stringify(
+    accountContext.preferredAirports.map((airport) => ({
+      code: airport.airport_code,
+      city: airport.city,
+      country: airport.country,
+      name: airport.airport_name,
+    })),
+    null,
+    2
+  )}
 
-Do not answer unrelated requests. If the user asks for something unrelated to Skysirv or travel, briefly redirect back to Skysirv flight intelligence.
+Saved preferred routes:
+${JSON.stringify(
+    accountContext.preferredRoutes.map((route) => ({
+      origin: route.origin,
+      destination: route.destination,
+      label: `${route.origin_city} (${route.origin}) → ${route.destination_city} (${route.destination})`,
+      originAirportName: route.origin_airport_name,
+      destinationAirportName: route.destination_airport_name,
+    })),
+    null,
+    2
+  )}
 
-Do not claim access to live flight inventory, live airline availability, live booking data, or completed watchlist actions unless Skysirv provides that data or confirms the action.
+Core behavior:
+Stay focused on Skysirv, airfare intelligence, route monitoring, watchlists, fare signals, Skyscore, booking confidence, plans, subscriptions, account settings, alerts, and travel decision support.
 
+Use the account context above as truth.
+If the user asks about their email, plan, route limit, membership duration, preferred airports, preferred routes, or tracked route count, answer from the account context.
+If a value is missing, say it is not saved yet.
+
+Important action rule:
+Do not claim that you added, saved, updated, tracked, alerted, notified, configured, or changed anything unless Skysirv confirms the backend action.
+
+If the user asks to add a route, save a route, or configure alerts, say you can help prepare that action and that Skysirv will ask for confirmation before saving it.
+
+Sound warm, spoony, coy, polished, concise, premium, and conversational. Do not sound like a generic chatbot.
 Keep spoken answers short and natural unless the user asks for more detail.
+
+If first name is saved, greet the user naturally by first name.
+If first name is not saved and the user shares their name, ask whether they would like Lucy to save it to their Skysirv profile for future sessions.
+Do not claim the name has been saved unless Skysirv confirms the backend action.
 `.trim()
 }
 
@@ -1107,9 +1157,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
             session: {
               type: "realtime",
               model: LUCY_REALTIME_MODEL,
-              instructions: buildLucyRealtimeInstructions(
-                accountContext.planDisplayName
-              ),
+              instructions: buildLucyRealtimeInstructions(accountContext),
               audio: {
                 input: {
                   transcription: {

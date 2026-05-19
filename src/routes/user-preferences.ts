@@ -14,6 +14,17 @@ function normalizeAirportCode(value: unknown) {
   return code
 }
 
+function cleanFirstName(value: unknown) {
+  if (typeof value !== "string") return null
+
+  const name = value.trim().replace(/\s+/g, " ")
+
+  if (!name) return null
+  if (name.length > 80) return null
+
+  return name
+}
+
 function getAirportPayload(code: string) {
   const airport = airportDirectory[code]
 
@@ -28,6 +39,40 @@ function getAirportPayload(code: string) {
 }
 
 export async function userPreferencesRoutes(app: FastifyInstance) {
+  app.post(
+    "/user-preferences/profile-name",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const user = request.user as { id: string; email?: string }
+
+      const body = request.body as {
+        firstName?: unknown
+      }
+
+      const firstName = cleanFirstName(body.firstName)
+
+      if (!firstName) {
+        return reply.status(400).send({
+          error: "A valid first name is required.",
+        })
+      }
+
+      const updatedUser = await app.db
+        .updateTable("users")
+        .set({
+          first_name: firstName,
+        })
+        .where("id", "=", user.id)
+        .returning(["id", "email", "first_name"])
+        .executeTakeFirstOrThrow()
+
+      return reply.send({
+        success: true,
+        user: updatedUser,
+      })
+    }
+  )
+
   app.get(
     "/user-preferences/preferred-airports",
     { preHandler: app.authenticate },
@@ -211,3 +256,4 @@ export async function userPreferencesRoutes(app: FastifyInstance) {
     }
   )
 }
+

@@ -8,6 +8,7 @@ export interface UsersTable {
   stripe_customer_id: string | null
   is_admin: boolean
   is_verified: boolean
+  first_name: string | null
 }
 
 export interface EmailVerificationTokensTable {
