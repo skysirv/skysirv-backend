@@ -1040,7 +1040,111 @@ The following is the current page-session conversation. Respond to the latest us
   ]
 }
 
+const LUCY_REALTIME_MODEL =
+  process.env.OPENAI_REALTIME_MODEL || "gpt-realtime"
+
+const LUCY_REALTIME_VOICE =
+  process.env.OPENAI_REALTIME_VOICE || "marin"
+
+function buildLucyRealtimeInstructions(planDisplayName: string) {
+  return `
+You are Lucy, the Skysirv Flight Attendant, speaking live with an authenticated Skysirv ${planDisplayName} user.
+
+Stay focused on Skysirv, airfare intelligence, route monitoring, watchlists, fare signals, Skyscore, booking confidence, plans, subscriptions, real-time updates, real-time activity alerts, and travel decision support.
+
+Sound warm, polished, concise, premium, and conversational. Do not sound like a generic chatbot.
+
+Do not answer unrelated requests. If the user asks for something unrelated to Skysirv or travel, briefly redirect back to Skysirv flight intelligence.
+
+Do not claim access to live flight inventory, live airline availability, live booking data, or completed watchlist actions unless Skysirv provides that data or confirms the action.
+
+Keep spoken answers short and natural unless the user asks for more detail.
+`.trim()
+}
+
 export async function flightAttendantRoutes(app: FastifyInstance) {
+  app.post(
+    "/flight-attendant/realtime-session",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const user = request.user as { id: string; email?: string }
+
+      const accountContext = await getLucyAccountContext({
+        app,
+        userId: user.id,
+      })
+
+      if (accountContext.normalizedPlan === "free") {
+        return reply.status(403).send({
+          success: false,
+          error: "Lucy is available on Pro and Business plans.",
+          code: "LUCY_NOT_INCLUDED",
+        })
+      }
+
+      if (!process.env.OPENAI_API_KEY) {
+        request.log.error("OPENAI_API_KEY is missing for Lucy realtime session")
+
+        return reply.status(500).send({
+          success: false,
+          error: "Lucy voice is not configured.",
+          code: "OPENAI_KEY_MISSING",
+        })
+      }
+
+      const openaiResponse = await fetch(
+        "https://api.openai.com/v1/realtime/client_secrets",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+            "OpenAI-Safety-Identifier": user.id,
+          },
+          body: JSON.stringify({
+            session: {
+              type: "realtime",
+              model: LUCY_REALTIME_MODEL,
+              instructions: buildLucyRealtimeInstructions(
+                accountContext.planDisplayName
+              ),
+              audio: {
+                output: {
+                  voice: LUCY_REALTIME_VOICE,
+                },
+              },
+            },
+          }),
+        }
+      )
+
+      const data = await openaiResponse.json()
+
+      if (!openaiResponse.ok) {
+        request.log.error(
+          { status: openaiResponse.status, data },
+          "Failed to create Lucy realtime client secret"
+        )
+
+        return reply.status(502).send({
+          success: false,
+          error: "Lucy voice session could not be created.",
+          code: "REALTIME_SESSION_FAILED",
+        })
+      }
+
+      return {
+        success: true,
+        model: LUCY_REALTIME_MODEL,
+        voice: LUCY_REALTIME_VOICE,
+        plan: accountContext.planDisplayName,
+        session: data,
+      }
+    }
+  )
+
   app.post(
     "/flight-attendant/chat",
     {
