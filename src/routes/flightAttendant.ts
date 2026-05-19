@@ -48,10 +48,18 @@ type LucyPreferredRouteAction = {
   confirmationPrompt: string
 }
 
+type LucySaveFirstNameAction = {
+  type: "save_first_name"
+  status: "needs_confirmation"
+  firstName: string
+  confirmationPrompt: string
+}
+
 type LucySuggestedAction =
   | LucyWatchlistAction
   | LucyPreferredAirportsAction
   | LucyPreferredRouteAction
+  | LucySaveFirstNameAction
 
 type LucyStructuredChatResponse = {
   reply: string
@@ -356,6 +364,34 @@ function cleanLucyPreferredAirportsAction(
   }
 }
 
+function cleanLucySaveFirstNameAction(
+  value: unknown
+): LucySaveFirstNameAction | null {
+  if (!value || typeof value !== "object") return null
+
+  const input = value as Partial<LucySaveFirstNameAction>
+
+  if (input.type !== "save_first_name") return null
+
+  const firstName =
+    typeof input.firstName === "string"
+      ? input.firstName.trim().replace(/\s+/g, " ")
+      : ""
+
+  if (!firstName || firstName.length > 80) return null
+
+  return {
+    type: "save_first_name",
+    status: "needs_confirmation",
+    firstName,
+    confirmationPrompt:
+      typeof input.confirmationPrompt === "string" &&
+        input.confirmationPrompt.trim()
+        ? input.confirmationPrompt.trim().slice(0, 240)
+        : `Would you like me to save ${firstName} as your first name for future Skysirv sessions?`,
+  }
+}
+
 function cleanLucyPreferredRouteAction(
   value: unknown
 ): LucyPreferredRouteAction | null {
@@ -406,6 +442,10 @@ function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
 
   if (input.type === "save_preferred_route") {
     return cleanLucyPreferredRouteAction(value)
+  }
+
+  if (input.type === "save_first_name") {
+    return cleanLucySaveFirstNameAction(value)
   }
 
   return null
@@ -1003,13 +1043,18 @@ The JSON must match this shape:
     "airportCodes": ["JFK", "LHR"],
     "airportLabels": ["New York (JFK)", "London (LHR)"],
     "confirmationPrompt": "Would you like me to save New York (JFK) and London (LHR) as preferred airports?"
-  } | {
+    } | {
     "type": "save_preferred_route",
     "status": "needs_confirmation",
     "origin": "JFK",
     "destination": "LHR",
     "routeLabel": "New York (JFK) → London (LHR)",
     "confirmationPrompt": "Would you like me to save New York (JFK) → London (LHR) as a preferred route?"
+  } | {
+    "type": "save_first_name",
+    "status": "needs_confirmation",
+    "firstName": "Tony",
+    "confirmationPrompt": "Would you like me to save Tony as your first name for future Skysirv sessions?"
   }
 }
 
@@ -1022,6 +1067,13 @@ Action rules:
 - When asking for confirmation, include the same MM-DD-YYYY date in the action object.
 - Do not say "confirmed", "preparing", or "I’m preparing" when the user has not yet completed the backend watchlist action.
 - The correct wording before backend confirmation is: "Would you like me to add this route to your watchlist?"
+
+First name memory rules:
+- If the user says their name or asks whether Lucy knows their name and firstName is not saved, ask what name they would like Lucy to use.
+- If the user clearly provides a first name, return a save_first_name action and ask for confirmation before saving.
+- Never claim the name is saved unless the frontend/backend confirms it.
+- Use only a reasonable first name, not a full sentence.
+- If the user says "my name is Tony", firstName should be "Tony".
 
 Preferred airport and preferred route rules:
 - If the user asks Lucy to remember, save, or use airports as preferred airports, return a save_preferred_airports action when the airport codes are clear.
