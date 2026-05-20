@@ -15,10 +15,30 @@ type FlightAttendantIncomingMessage = {
   text?: string
 }
 
+type FlightAttendantDashboardRouteContext = {
+  id?: string
+  origin?: string
+  destination?: string
+  departureDate?: string | null
+  routeLabel?: string
+  latestPrice?: number | null
+  averagePrice?: number | null
+  bookingSignal?: string | null
+  recommendedFlights?: Array<{
+    airline?: string | null
+    airlineName?: string | null
+    flightNumber?: string | null
+    price?: number | null
+    currency?: string | null
+    stopCount?: number | null
+  }>
+}
+
 type FlightAttendantChatBody = {
   message?: string
   messages?: FlightAttendantIncomingMessage[]
   tier?: "free" | "pro" | "business"
+  dashboardRoutes?: FlightAttendantDashboardRouteContext[]
 }
 
 type LucyWatchlistAction = {
@@ -990,6 +1010,7 @@ function buildOpenAIInput({
   user,
   accountContext,
   conversation,
+  dashboardRoutes,
 }: {
   user: { id: string; email?: string }
   accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
@@ -997,6 +1018,7 @@ function buildOpenAIInput({
     role: FlightAttendantRole
     content: string
   }>
+  dashboardRoutes: FlightAttendantDashboardRouteContext[]
 }) {
   return [
     {
@@ -1023,6 +1045,26 @@ Route/watchlist context:
 Tracked route limit: ${accountContext.routeLimitLabel}
 Current tracked routes: ${accountContext.currentTrackedRoutes}
 Remaining tracked routes: ${accountContext.remainingTrackedRoutes}
+
+Current dashboard route/watchlist context:
+${JSON.stringify(
+        dashboardRoutes.slice(0, 12).map((route) => ({
+          id: route.id || null,
+          origin: route.origin || null,
+          destination: route.destination || null,
+          departureDate: route.departureDate || null,
+          routeLabel: route.routeLabel || null,
+          latestPrice: route.latestPrice ?? null,
+          averagePrice: route.averagePrice ?? null,
+          bookingSignal: route.bookingSignal || null,
+          recommendedFlights: Array.isArray(route.recommendedFlights)
+            ? route.recommendedFlights.slice(0, 8)
+            : [],
+        })),
+        null,
+        2
+      )}
+
 
 Saved preferred airport context:
 ${JSON.stringify(
@@ -1130,6 +1172,7 @@ Action rules:
 - When asking for confirmation, include the same MM-DD-YYYY date in the action object.
 - Do not say "confirmed", "preparing", or "I’m preparing" when the user has not yet completed the backend watchlist action.
 - The correct wording before backend confirmation is: "Would you like me to add this route to your watchlist?"
+- No duplicate messages.
 
 First name memory rules:
 - If the user says their name or asks whether Lucy knows their name and firstName is not saved, ask what name they would like Lucy to use.
@@ -1424,6 +1467,9 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
           user,
           accountContext,
           conversation,
+          dashboardRoutes: Array.isArray(body.dashboardRoutes)
+            ? body.dashboardRoutes
+            : [],
         }),
       })
 
