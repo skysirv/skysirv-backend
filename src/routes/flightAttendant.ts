@@ -1209,7 +1209,8 @@ const LUCY_REALTIME_VOICE =
   process.env.OPENAI_REALTIME_VOICE || "marin"
 
 function buildLucyRealtimeInstructions(
-  accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
+  accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>,
+  dashboardRoutes: FlightAttendantDashboardRouteContext[]
 ) {
   return `
 ${LUCY_SHARED_TRAINING_PROMPT}
@@ -1238,6 +1239,25 @@ ${JSON.stringify(
       city: airport.city,
       country: airport.country,
       name: airport.airport_name,
+    })),
+    null,
+    2
+  )}
+
+Current dashboard route/watchlist context:
+${JSON.stringify(
+    dashboardRoutes.slice(0, 12).map((route) => ({
+      id: route.id || null,
+      origin: route.origin || null,
+      destination: route.destination || null,
+      departureDate: route.departureDate || null,
+      routeLabel: route.routeLabel || null,
+      latestPrice: route.latestPrice ?? null,
+      averagePrice: route.averagePrice ?? null,
+      bookingSignal: route.bookingSignal || null,
+      recommendedFlights: Array.isArray(route.recommendedFlights)
+        ? route.recommendedFlights.slice(0, 8)
+        : [],
     })),
     null,
     2
@@ -1290,6 +1310,9 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const user = request.user as { id: string; email?: string }
+      const body = request.body as {
+        dashboardRoutes?: FlightAttendantDashboardRouteContext[]
+      }
 
       const accountContext = await getLucyAccountContext({
         app,
@@ -1327,7 +1350,10 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
             session: {
               type: "realtime",
               model: LUCY_REALTIME_MODEL,
-              instructions: buildLucyRealtimeInstructions(accountContext),
+              instructions: buildLucyRealtimeInstructions(
+                accountContext,
+                Array.isArray(body.dashboardRoutes) ? body.dashboardRoutes : []
+              ),
               tools: [
                 {
                   type: "function",
