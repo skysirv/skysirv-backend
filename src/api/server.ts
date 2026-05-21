@@ -15,6 +15,8 @@ import { monitorRoutes } from "../routes/monitor.js"
 import { explorerRoutes } from "../routes/explorer.js"
 import { airportRoutes } from "../routes/airports.js"
 import { adminRoutes } from "../routes/admin.js"
+import { adminSmsRoutes } from "../routes/admin-sms.js"
+import { publicSmsRoutes } from "../routes/public-sms.js"
 import { inviteRoutes } from "../routes/invite.js"
 import { subscriptionRoutes } from "../routes/subscriptions.js"
 import { googleAuthRoutes } from "../auth/googleRoutes.js"
@@ -106,6 +108,8 @@ export function buildServer() {
   app.register(explorerRoutes)
   app.register(airportRoutes, { prefix: "/api" })
   app.register(adminRoutes, { prefix: "/api" })
+  app.register(adminSmsRoutes, { prefix: "/api" })
+  app.register(publicSmsRoutes, { prefix: "/api" })
   app.register(inviteRoutes, { prefix: "/api" })
   app.register(subscriptionRoutes, { prefix: "/api" })
   app.register(betaRoutes, { prefix: "/api" })

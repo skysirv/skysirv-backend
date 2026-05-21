@@ -25,6 +25,49 @@ function cleanFirstName(value: unknown) {
   return name
 }
 
+function cleanSmsPhoneNumber(value: unknown) {
+  if (typeof value !== "string") return null
+
+  const phoneNumber = value.trim()
+
+  if (!phoneNumber) return null
+  if (!/^\+[1-9]\d{7,14}$/.test(phoneNumber)) return null
+
+  return phoneNumber
+}
+
+function cleanOptOutReason(value: unknown) {
+  if (typeof value !== "string") return null
+
+  const reason = value.trim().replace(/\s+/g, " ")
+
+  if (!reason) return null
+  if (reason.length > 240) return reason.slice(0, 240)
+
+  return reason
+}
+
+function parseOptionalBoolean(value: unknown) {
+  if (value === undefined) {
+    return {
+      ok: true,
+      value: undefined as boolean | undefined,
+    }
+  }
+
+  if (typeof value === "boolean") {
+    return {
+      ok: true,
+      value,
+    }
+  }
+
+  return {
+    ok: false,
+    value: undefined as boolean | undefined,
+  }
+}
+
 function getAirportPayload(code: string) {
   const airport = airportDirectory[code]
 
@@ -35,6 +78,46 @@ function getAirportPayload(code: string) {
     airport_name: airport.name,
     city: airport.city,
     country: airport.country,
+  }
+}
+
+function formatSmsPreferences(row: any | null) {
+  if (!row) {
+    return {
+      id: null,
+      userId: null,
+      phoneNumber: null,
+      phoneVerified: false,
+      smsEnabled: false,
+      priceAlertsEnabled: false,
+      watchlistAlertsEnabled: false,
+      systemAlertsEnabled: false,
+      smsOptedInAt: null,
+      smsOptedOutAt: null,
+      phoneVerifiedAt: null,
+      lastSmsSentAt: null,
+      optOutReason: null,
+      createdAt: null,
+      updatedAt: null,
+    }
+  }
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    phoneNumber: row.phone_number,
+    phoneVerified: row.phone_verified,
+    smsEnabled: row.sms_enabled,
+    priceAlertsEnabled: row.price_alerts_enabled,
+    watchlistAlertsEnabled: row.watchlist_alerts_enabled,
+    systemAlertsEnabled: row.system_alerts_enabled,
+    smsOptedInAt: row.sms_opted_in_at,
+    smsOptedOutAt: row.sms_opted_out_at,
+    phoneVerifiedAt: row.phone_verified_at,
+    lastSmsSentAt: row.last_sms_sent_at,
+    optOutReason: row.opt_out_reason,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 
@@ -69,6 +152,281 @@ export async function userPreferencesRoutes(app: FastifyInstance) {
       return reply.send({
         success: true,
         user: updatedUser,
+      })
+    }
+  )
+
+  app.get(
+    "/user-preferences/sms",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const user = request.user as { id: string; email?: string }
+
+      const smsPreferences = await (app.db as any)
+        .selectFrom("user_sms_preferences")
+        .selectAll()
+        .where("user_id", "=", user.id)
+        .executeTakeFirst()
+
+      return {
+        success: true,
+        smsPreferences: formatSmsPreferences(smsPreferences ?? null),
+      }
+    }
+  )
+
+  app.post(
+    "/user-preferences/sms",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const user = request.user as { id: string; email?: string }
+
+      const body = (request.body ?? {}) as {
+        phoneNumber?: unknown
+        smsEnabled?: unknown
+        priceAlertsEnabled?: unknown
+        watchlistAlertsEnabled?: unknown
+        systemAlertsEnabled?: unknown
+        optOutReason?: unknown
+      }
+
+      const phoneNumber =
+        body.phoneNumber === undefined
+          ? undefined
+          : cleanSmsPhoneNumber(body.phoneNumber)
+
+      if (body.phoneNumber !== undefined && !phoneNumber) {
+        return reply.status(400).send({
+          error:
+            "A valid SMS phone number is required in E.164 format, for example +15551234567.",
+        })
+      }
+
+      const smsEnabled = parseOptionalBoolean(body.smsEnabled)
+      const priceAlertsEnabled = parseOptionalBoolean(body.priceAlertsEnabled)
+      const watchlistAlertsEnabled = parseOptionalBoolean(
+        body.watchlistAlertsEnabled
+      )
+      const systemAlertsEnabled = parseOptionalBoolean(body.systemAlertsEnabled)
+
+      if (
+        !smsEnabled.ok ||
+        !priceAlertsEnabled.ok ||
+        !watchlistAlertsEnabled.ok ||
+        !systemAlertsEnabled.ok
+      ) {
+        return reply.status(400).send({
+          error:
+            "SMS preference fields must be boolean values when provided.",
+        })
+      }
+
+      const existingPreferences = await (app.db as any)
+        .selectFrom("user_sms_preferences")
+        .selectAll()
+        .where("user_id", "=", user.id)
+        .executeTakeFirst()
+
+      const now = new Date()
+
+      const nextPhoneNumber =
+        phoneNumber ?? existingPreferences?.phone_number ?? null
+
+      const wasSmsEnabled = Boolean(existingPreferences?.sms_enabled)
+      const nextSmsEnabled =
+        smsEnabled.value ?? Boolean(existingPreferences?.sms_enabled)
+
+      const nextPriceAlertsEnabled =
+        priceAlertsEnabled.value ??
+        Boolean(existingPreferences?.price_alerts_enabled)
+
+      const nextWatchlistAlertsEnabled =
+        watchlistAlertsEnabled.value ??
+        Boolean(existingPreferences?.watchlist_alerts_enabled)
+
+      const nextSystemAlertsEnabled =
+        systemAlertsEnabled.value ??
+        Boolean(existingPreferences?.system_alerts_enabled)
+
+      const wantsAnySms =
+        nextSmsEnabled ||
+        nextPriceAlertsEnabled ||
+        nextWatchlistAlertsEnabled ||
+        nextSystemAlertsEnabled
+
+      if (wantsAnySms && !nextPhoneNumber) {
+        return reply.status(400).send({
+          error:
+            "A verified phone number is required before SMS alerts can be enabled.",
+        })
+      }
+
+      const phoneChanged =
+        Boolean(phoneNumber) &&
+        phoneNumber !== existingPreferences?.phone_number
+
+      const nextPhoneVerified = phoneChanged
+        ? false
+        : Boolean(existingPreferences?.phone_verified)
+
+      const nextPhoneVerifiedAt = phoneChanged
+        ? null
+        : existingPreferences?.phone_verified_at ?? null
+
+      const nextSmsOptedInAt =
+        nextSmsEnabled && !wasSmsEnabled
+          ? now
+          : existingPreferences?.sms_opted_in_at ?? null
+
+      const nextSmsOptedOutAt = nextSmsEnabled
+        ? null
+        : wasSmsEnabled
+          ? now
+          : existingPreferences?.sms_opted_out_at ?? null
+
+      const nextOptOutReason = nextSmsEnabled
+        ? null
+        : cleanOptOutReason(body.optOutReason) ??
+        existingPreferences?.opt_out_reason ??
+        null
+
+      const savedPreferences = await (app.db as any)
+        .insertInto("user_sms_preferences")
+        .values({
+          id: existingPreferences?.id ?? crypto.randomUUID(),
+          user_id: user.id,
+          phone_number: nextPhoneNumber,
+          phone_verified: nextPhoneVerified,
+          sms_enabled: nextSmsEnabled,
+          price_alerts_enabled: nextPriceAlertsEnabled,
+          watchlist_alerts_enabled: nextWatchlistAlertsEnabled,
+          system_alerts_enabled: nextSystemAlertsEnabled,
+          sms_opted_in_at: nextSmsOptedInAt,
+          sms_opted_out_at: nextSmsOptedOutAt,
+          phone_verified_at: nextPhoneVerifiedAt,
+          last_sms_sent_at: existingPreferences?.last_sms_sent_at ?? null,
+          opt_out_reason: nextOptOutReason,
+          created_at: existingPreferences?.created_at ?? now,
+          updated_at: now,
+        })
+        .onConflict((oc: any) =>
+          oc.column("user_id").doUpdateSet({
+            phone_number: nextPhoneNumber,
+            phone_verified: nextPhoneVerified,
+            sms_enabled: nextSmsEnabled,
+            price_alerts_enabled: nextPriceAlertsEnabled,
+            watchlist_alerts_enabled: nextWatchlistAlertsEnabled,
+            system_alerts_enabled: nextSystemAlertsEnabled,
+            sms_opted_in_at: nextSmsOptedInAt,
+            sms_opted_out_at: nextSmsOptedOutAt,
+            phone_verified_at: nextPhoneVerifiedAt,
+            last_sms_sent_at: existingPreferences?.last_sms_sent_at ?? null,
+            opt_out_reason: nextOptOutReason,
+            updated_at: now,
+          })
+        )
+        .returningAll()
+        .executeTakeFirstOrThrow()
+
+      if (nextPhoneNumber) {
+        const eventType = phoneChanged
+          ? "phone_updated"
+          : !wasSmsEnabled && nextSmsEnabled
+            ? "opted_in"
+            : wasSmsEnabled && !nextSmsEnabled
+              ? "opted_out"
+              : "preferences_updated"
+
+        await (app.db as any)
+          .insertInto("user_sms_events")
+          .values({
+            id: crypto.randomUUID(),
+            user_id: user.id,
+            phone_number: nextPhoneNumber,
+            event_type: eventType,
+            provider: "skysirv",
+            provider_message_sid: null,
+            metadata_json: JSON.stringify({
+              smsEnabled: nextSmsEnabled,
+              priceAlertsEnabled: nextPriceAlertsEnabled,
+              watchlistAlertsEnabled: nextWatchlistAlertsEnabled,
+              systemAlertsEnabled: nextSystemAlertsEnabled,
+              phoneVerified: nextPhoneVerified,
+            }),
+            created_at: now,
+          })
+          .execute()
+      }
+
+      return reply.send({
+        success: true,
+        smsPreferences: formatSmsPreferences(savedPreferences),
+      })
+    }
+  )
+
+  app.post(
+    "/user-preferences/sms/disable",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const user = request.user as { id: string; email?: string }
+
+      const body = (request.body ?? {}) as {
+        optOutReason?: unknown
+      }
+
+      const existingPreferences = await (app.db as any)
+        .selectFrom("user_sms_preferences")
+        .selectAll()
+        .where("user_id", "=", user.id)
+        .executeTakeFirst()
+
+      if (!existingPreferences) {
+        return reply.send({
+          success: true,
+          smsPreferences: formatSmsPreferences(null),
+        })
+      }
+
+      const now = new Date()
+      const optOutReason = cleanOptOutReason(body.optOutReason)
+
+      const updatedPreferences = await (app.db as any)
+        .updateTable("user_sms_preferences")
+        .set({
+          sms_enabled: false,
+          price_alerts_enabled: false,
+          watchlist_alerts_enabled: false,
+          system_alerts_enabled: false,
+          sms_opted_out_at: now,
+          opt_out_reason: optOutReason ?? existingPreferences.opt_out_reason,
+          updated_at: now,
+        })
+        .where("user_id", "=", user.id)
+        .returningAll()
+        .executeTakeFirstOrThrow()
+
+      if (existingPreferences.phone_number) {
+        await (app.db as any)
+          .insertInto("user_sms_events")
+          .values({
+            id: crypto.randomUUID(),
+            user_id: user.id,
+            phone_number: existingPreferences.phone_number,
+            event_type: "opted_out",
+            provider: "skysirv",
+            provider_message_sid: null,
+            metadata_json: JSON.stringify({
+              reason: optOutReason,
+            }),
+            created_at: now,
+          })
+          .execute()
+      }
+
+      return reply.send({
+        success: true,
+        smsPreferences: formatSmsPreferences(updatedPreferences),
       })
     }
   )
@@ -256,4 +614,3 @@ export async function userPreferencesRoutes(app: FastifyInstance) {
     }
   )
 }
-

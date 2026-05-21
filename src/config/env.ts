@@ -3,6 +3,16 @@ import { z } from "zod"
 
 config()
 
+const envBoolean = z
+  .preprocess(
+    (value) => {
+      if (typeof value !== "string") return value
+      return value.trim().toLowerCase()
+    },
+    z.enum(["true", "false", "1", "0", "yes", "no", "on", "off"]).default("false"),
+  )
+  .transform((value) => ["true", "1", "yes", "on"].includes(value))
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "production", "test"]),
@@ -36,39 +46,82 @@ const envSchema = z
     DUFFEL_ACCESS_TOKEN: z.string().optional(),
     DUFFEL_API_BASE_URL: z.string().url().default("https://api.duffel.com"),
     DUFFEL_API_VERSION: z.string().default("v2"),
+
+    SMS_PROVIDER: z.enum(["disabled", "twilio"]).default("disabled"),
+    SMS_ALERTS_ENABLED: envBoolean,
+
+    TWILIO_ACCOUNT_SID: z.string().optional(),
+    TWILIO_AUTH_TOKEN: z.string().optional(),
+    TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
+    TWILIO_FROM_PHONE_NUMBER: z.string().optional(),
   })
   .superRefine((env, ctx) => {
-    if (env.NODE_ENV !== "production") return
+    if (env.NODE_ENV === "production") {
+      const productionUrlFields = [
+        "APP_BASE_URL",
+        "FRONTEND_BASE_URL",
+        "STRIPE_SUCCESS_URL",
+        "STRIPE_CANCEL_URL",
+        "DUFFEL_API_BASE_URL",
+      ] as const
 
-    const productionUrlFields = [
-      "APP_BASE_URL",
-      "FRONTEND_BASE_URL",
-      "STRIPE_SUCCESS_URL",
-      "STRIPE_CANCEL_URL",
-      "DUFFEL_API_BASE_URL",
-    ] as const
+      for (const field of productionUrlFields) {
+        const value = env[field]
 
-    for (const field of productionUrlFields) {
-      const value = env[field]
+        try {
+          const url = new URL(value)
+          const hostname = url.hostname.toLowerCase()
 
-      try {
-        const url = new URL(value)
-        const hostname = url.hostname.toLowerCase()
-
-        if (hostname === "localhost" || hostname === "127.0.0.1") {
+          if (hostname === "localhost" || hostname === "127.0.0.1") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [field],
+              message: `${field} cannot use localhost or 127.0.0.1 in production`,
+            })
+          }
+        } catch {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: [field],
-            message: `${field} cannot use localhost or 127.0.0.1 in production`,
+            message: `${field} must be a valid URL`,
           })
         }
-      } catch {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [field],
-          message: `${field} must be a valid URL`,
-        })
       }
+    }
+
+    if (!env.SMS_ALERTS_ENABLED) return
+
+    if (env.SMS_PROVIDER !== "twilio") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["SMS_PROVIDER"],
+        message: "SMS_PROVIDER must be twilio when SMS_ALERTS_ENABLED is true",
+      })
+    }
+
+    if (!env.TWILIO_ACCOUNT_SID) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["TWILIO_ACCOUNT_SID"],
+        message: "TWILIO_ACCOUNT_SID is required when SMS alerts are enabled",
+      })
+    }
+
+    if (!env.TWILIO_AUTH_TOKEN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["TWILIO_AUTH_TOKEN"],
+        message: "TWILIO_AUTH_TOKEN is required when SMS alerts are enabled",
+      })
+    }
+
+    if (!env.TWILIO_MESSAGING_SERVICE_SID && !env.TWILIO_FROM_PHONE_NUMBER) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["TWILIO_MESSAGING_SERVICE_SID"],
+        message:
+          "Either TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_PHONE_NUMBER is required when SMS alerts are enabled",
+      })
     }
   })
 
