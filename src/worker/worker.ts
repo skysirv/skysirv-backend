@@ -341,9 +341,32 @@ export function startWorkers() {
 
           return selectedResults.map((r) => ({
             airline: getPrimaryCarrier(r) || r.airline,
+            airlineName: r.airlineName ?? null,
+            airlineLogoSymbolUrl: r.airlineLogoSymbolUrl ?? null,
+            airlineLogoLockupUrl: r.airlineLogoLockupUrl ?? null,
             flightNumber: normalizeFlightNumber(r.flightNumber) || "0",
             price: r.price,
             currency: r.currency,
+            marketingCarrier: r.marketingCarrier ?? null,
+            operatingCarrier: r.operatingCarrier ?? null,
+            stopCount: getStopCount(r),
+            totalDurationMinutes:
+              r.totalDurationMinutes != null && Number.isFinite(r.totalDurationMinutes)
+                ? r.totalDurationMinutes
+                : computeDurationMinutes(r),
+            itineraryKey: buildItineraryKey(r),
+            segments: Array.isArray(r.segments)
+              ? r.segments.map((segment) => ({
+                origin: normalizeText(segment.origin).toUpperCase(),
+                destination: normalizeText(segment.destination).toUpperCase(),
+                marketingCarrier: segment.marketingCarrier ?? null,
+                operatingCarrier: segment.operatingCarrier ?? null,
+                marketingFlightNumber: segment.marketingFlightNumber ?? null,
+                operatingFlightNumber: segment.operatingFlightNumber ?? null,
+                departureTime: segment.departureTime ?? null,
+                arrivalTime: segment.arrivalTime ?? null,
+              }))
+              : [],
           }))
         }
       )
@@ -448,11 +471,6 @@ export function startWorkers() {
 
       if (routes.length === 0) break
 
-      console.log("🔎 Monitored routes batch:", {
-        count: routes.length,
-        cursor,
-      })
-
       for (const r of routes) {
         const routeParts = r.route.split("-")
 
@@ -508,15 +526,6 @@ export function startWorkers() {
           : 0
 
         const due = now - lastChecked >= finalIntervalMs
-
-        console.log("🧭 Monitor route due check:", {
-          route: r.route,
-          routeHash: r.route_hash,
-          lastCheckedAt: r.last_checked_at,
-          finalIntervalMinutes: Math.round(finalIntervalMs / 1000 / 60),
-          minutesSinceLastCheck: Math.round((now - lastChecked) / 1000 / 60),
-          due,
-        })
 
         if (!due) continue
 

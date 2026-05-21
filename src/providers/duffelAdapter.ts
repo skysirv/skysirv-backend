@@ -406,11 +406,6 @@ export class DuffelAdapter implements FlightProvider {
         const rawSegments = slice?.segments ?? []
 
         if (!this.isRealisticItinerary(rawSegments)) {
-          console.log("Duffel skipped unrealistic itinerary", {
-            origin: params.origin,
-            destination: params.destination,
-            segments: rawSegments,
-          })
           continue
         }
 
@@ -423,15 +418,6 @@ export class DuffelAdapter implements FlightProvider {
           firstSegment?.origin !== this.normalizeCode(params.origin) ||
           lastSegment?.destination !== this.normalizeCode(params.destination)
         ) {
-          console.log(
-            "Duffel skipped itinerary that does not match requested route endpoints",
-            {
-              requestedOrigin: params.origin,
-              requestedDestination: params.destination,
-              firstSegment,
-              lastSegment,
-            }
-          )
           continue
         }
 
@@ -440,11 +426,6 @@ export class DuffelAdapter implements FlightProvider {
           this.getRepresentativeFlightNumber(rawSegments)
 
         if (!dominantCarrier || !representativeFlightNumber) {
-          console.log("Duffel skipped offer with no verified itinerary identity", {
-            origin: params.origin,
-            destination: params.destination,
-            segments: rawSegments,
-          })
           continue
         }
 
