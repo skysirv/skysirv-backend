@@ -119,7 +119,7 @@ export async function sendAlertEmail({
   }
 
   const finalDashboardUrl =
-    dashboardUrl || `${env.FRONTEND_BASE_URL}/dashboard`
+    dashboardUrl || `${env.FRONTEND_BASE_URL}/?signin=1`
   const routeLabel =
     origin && destination ? `${origin} → ${destination}` : routeHash
   const airlineLabel = airlineName || airline

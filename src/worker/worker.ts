@@ -481,7 +481,7 @@ export function startWorkers() {
         planName = plan?.name ?? null
       }
 
-      const dashboardUrl = getDashboardUrlForPlan(planName)
+      const dashboardUrl = `${env.FRONTEND_BASE_URL}/?signin=1`
 
       await sendAlertEmail({
         userId: user.id,
