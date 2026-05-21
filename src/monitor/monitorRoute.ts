@@ -342,7 +342,20 @@ export async function monitorRoute(
 
   const prices = await provider(route)
 
-  console.log("📦 Prices returned:", prices)
+  console.log("📦 Prices returned:", {
+    count: prices.length,
+    sample: prices[0]
+      ? {
+        airline: prices[0].airline,
+        airlineName: prices[0].airlineName ?? null,
+        airlineLogoSymbolUrl: prices[0].airlineLogoSymbolUrl ?? null,
+        airlineLogoLockupUrl: prices[0].airlineLogoLockupUrl ?? null,
+        flightNumber: prices[0].flightNumber,
+        price: prices[0].price,
+        currency: prices[0].currency,
+      }
+      : null,
+  })
 
   if (!prices || prices.length === 0) {
     console.log("⚠️ No prices returned from provider")
