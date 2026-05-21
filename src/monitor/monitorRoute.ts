@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely"
+import { sql, type Kysely } from "kysely"
 import type { Queue } from "bullmq"
 import type { Database as DB } from "../db/types.js"
 
@@ -469,7 +469,9 @@ export async function monitorRoute(
         skyscore: null,
         booking_signal: "WATCH",
         volatility_index: null,
-        itinerary_segments: p.segments ?? null,
+        itinerary_segments: p.segments
+          ? sql`${JSON.stringify(p.segments)}::jsonb`
+          : null,
         stop_count: p.stopCount ?? null,
         itinerary_key: p.itineraryKey ?? null,
       })
