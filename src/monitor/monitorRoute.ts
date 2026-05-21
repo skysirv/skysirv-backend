@@ -548,7 +548,7 @@ export async function monitorRoute(
 
     await evaluateAlerts(db, queue, route.routeHash, {
       ...p,
-      price: priceInCents,
+      price: p.price,
     })
   }
 
