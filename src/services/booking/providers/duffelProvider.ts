@@ -79,29 +79,62 @@ function normalizeOffer(offer: any): NormalizedBookingOffer {
       departureTime: getFirstSegment(slice)?.departing_at ?? null,
       arrivalTime: getLastSegment(slice)?.arriving_at ?? null,
       stops: Math.max(0, (slice.segments?.length ?? 1) - 1),
-      segments: (slice.segments ?? []).map((segment: any) => ({
-        id: segment.id,
-        airlineName: segment.marketing_carrier?.name ?? null,
-        airlineIataCode: segment.marketing_carrier?.iata_code ?? null,
-        flightNumber: segment.marketing_carrier_flight_number ?? null,
-        origin: normalizeAirport(segment.origin),
-        destination: normalizeAirport(segment.destination),
-        departingAt: segment.departing_at ?? null,
-        arrivingAt: segment.arriving_at ?? null,
-        duration: segment.duration ?? null,
-        aircraft: segment.aircraft?.name ?? null,
-      })),
+      segments: (slice.segments ?? []).map((segment: any) => {
+        const marketingCarrier = segment.marketing_carrier ?? null
+        const operatingCarrier = segment.operating_carrier ?? null
+
+        return {
+          id: segment.id,
+          airlineName:
+            marketingCarrier?.name ?? operatingCarrier?.name ?? null,
+          airlineIataCode:
+            marketingCarrier?.iata_code ?? operatingCarrier?.iata_code ?? null,
+          airlineLogoSymbolUrl:
+            marketingCarrier?.logo_symbol_url ??
+            operatingCarrier?.logo_symbol_url ??
+            null,
+          airlineLogoLockupUrl:
+            marketingCarrier?.logo_lockup_url ??
+            operatingCarrier?.logo_lockup_url ??
+            null,
+          flightNumber:
+            segment.marketing_carrier_flight_number ??
+            segment.operating_carrier_flight_number ??
+            null,
+          origin: normalizeAirport(segment.origin),
+          destination: normalizeAirport(segment.destination),
+          departingAt: segment.departing_at ?? null,
+          arrivingAt: segment.arriving_at ?? null,
+          duration: segment.duration ?? null,
+          aircraft: segment.aircraft?.name ?? null,
+        }
+      }),
     })),
     summary: {
       airlineName:
         firstSegment?.marketing_carrier?.name ??
+        firstSegment?.operating_carrier?.name ??
         offer.owner?.name ??
         "Unknown airline",
       airlineIataCode:
         firstSegment?.marketing_carrier?.iata_code ??
+        firstSegment?.operating_carrier?.iata_code ??
         offer.owner?.iata_code ??
         null,
-      flightNumber: firstSegment?.marketing_carrier_flight_number ?? null,
+      airlineLogoSymbolUrl:
+        firstSegment?.marketing_carrier?.logo_symbol_url ??
+        firstSegment?.operating_carrier?.logo_symbol_url ??
+        offer.owner?.logo_symbol_url ??
+        null,
+      airlineLogoLockupUrl:
+        firstSegment?.marketing_carrier?.logo_lockup_url ??
+        firstSegment?.operating_carrier?.logo_lockup_url ??
+        offer.owner?.logo_lockup_url ??
+        null,
+      flightNumber:
+        firstSegment?.marketing_carrier_flight_number ??
+        firstSegment?.operating_carrier_flight_number ??
+        null,
       departureTime: firstSegment?.departing_at ?? null,
       arrivalTime: lastSegment?.arriving_at ?? null,
       duration: firstSlice?.duration ?? null,

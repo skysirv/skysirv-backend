@@ -19,6 +19,9 @@ export type NormalizedItinerarySegment = {
 
 export type NormalizedPrice = {
   airline: string
+  airlineName?: string | null
+  airlineLogoSymbolUrl?: string | null
+  airlineLogoLockupUrl?: string | null
   flightNumber: string
   price: number
   currency: string
@@ -233,6 +236,20 @@ function sanitizePrices(prices: NormalizedPrice[]): NormalizedPrice[] {
 
     cleaned.push({
       airline,
+      airlineName:
+        typeof raw.airlineName === "string" && raw.airlineName.trim()
+          ? raw.airlineName.trim()
+          : null,
+      airlineLogoSymbolUrl:
+        typeof raw.airlineLogoSymbolUrl === "string" &&
+          raw.airlineLogoSymbolUrl.trim()
+          ? raw.airlineLogoSymbolUrl.trim()
+          : null,
+      airlineLogoLockupUrl:
+        typeof raw.airlineLogoLockupUrl === "string" &&
+          raw.airlineLogoLockupUrl.trim()
+          ? raw.airlineLogoLockupUrl.trim()
+          : null,
       flightNumber,
       price: Number(price.toFixed(2)),
       currency,
@@ -392,6 +409,9 @@ export async function monitorRoute(
 
     console.log("💾 Inserting price history:", {
       airline: p.airline,
+      airlineName: p.airlineName ?? null,
+      airlineLogoSymbolUrl: p.airlineLogoSymbolUrl ?? null,
+      airlineLogoLockupUrl: p.airlineLogoLockupUrl ?? null,
       flightNumber: p.flightNumber,
       priceDollars: p.price,
       priceInCents,
@@ -412,6 +432,9 @@ export async function monitorRoute(
             ? route.departureDate
             : new Date(route.departureDate),
         airline: p.airline,
+        airline_name: p.airlineName ?? null,
+        airline_logo_symbol_url: p.airlineLogoSymbolUrl ?? null,
+        airline_logo_lockup_url: p.airlineLogoLockupUrl ?? null,
         flight_number: p.flightNumber,
         price: priceInCents,
         currency: p.currency,

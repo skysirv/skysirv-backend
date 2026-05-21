@@ -83,6 +83,9 @@ export interface FlightPriceHistoryTable {
   destination: string
   departure_date: Date
   airline: string
+  airline_name: string | null
+  airline_logo_symbol_url: string | null
+  airline_logo_lockup_url: string | null
   flight_number: string
   price: number
   currency: string

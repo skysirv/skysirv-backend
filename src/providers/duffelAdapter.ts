@@ -1,13 +1,25 @@
 import { Duffel } from "@duffel/api"
-import { FlightProvider, FlightSearchParams, FlightResult, FlightSegment } from "./types.js"
+import {
+  FlightProvider,
+  FlightSearchParams,
+  FlightResult,
+  FlightSegment,
+} from "./types.js"
+
+type DuffelCarrier = {
+  iata_code?: string | null
+  name?: string | null
+  logo_symbol_url?: string | null
+  logo_lockup_url?: string | null
+}
 
 type DuffelSegment = {
   departing_at?: string
   arriving_at?: string
   origin?: { iata_code?: string }
   destination?: { iata_code?: string }
-  marketing_carrier?: { iata_code?: string }
-  operating_carrier?: { iata_code?: string }
+  marketing_carrier?: DuffelCarrier
+  operating_carrier?: DuffelCarrier
   marketing_carrier_flight_number?: string
   operating_carrier_flight_number?: string
 }
@@ -22,6 +34,12 @@ type CarrierStats = {
   operatingCount: number
   marketingCount: number
   firstSeenIndex: number
+}
+
+type CarrierBranding = {
+  airlineName: string | null
+  airlineLogoSymbolUrl: string | null
+  airlineLogoLockupUrl: string | null
 }
 
 export class DuffelAdapter implements FlightProvider {
@@ -45,6 +63,12 @@ export class DuffelAdapter implements FlightProvider {
 
   private normalizeFlightNumber(value: string | null | undefined): string {
     return String(value ?? "").trim().toUpperCase().replace(/\s+/g, "")
+  }
+
+  private cleanOptionalText(value: string | null | undefined): string | null {
+    const cleaned = String(value ?? "").trim()
+
+    return cleaned || null
   }
 
   private isUsableCarrierCode(value: string | null | undefined): boolean {
@@ -77,8 +101,12 @@ export class DuffelAdapter implements FlightProvider {
     airline: string
     flightNumber: string
   } | null {
-    const marketingCarrier = this.normalizeCode(segment.marketing_carrier?.iata_code)
-    const operatingCarrier = this.normalizeCode(segment.operating_carrier?.iata_code)
+    const marketingCarrier = this.normalizeCode(
+      segment.marketing_carrier?.iata_code
+    )
+    const operatingCarrier = this.normalizeCode(
+      segment.operating_carrier?.iata_code
+    )
 
     const marketingFlightNumber = this.normalizeFlightNumber(
       segment.marketing_carrier_flight_number
@@ -110,6 +138,70 @@ export class DuffelAdapter implements FlightProvider {
     return null
   }
 
+  private getCarrierBranding(
+    segments: DuffelSegment[],
+    carrierCode: string,
+    fallbackCarrier?: DuffelCarrier | null
+  ): CarrierBranding {
+    const normalizedCarrierCode = this.normalizeCode(carrierCode)
+
+    const matchingCarriers: DuffelCarrier[] = []
+
+    for (const segment of segments) {
+      const marketingCarrierCode = this.normalizeCode(
+        segment.marketing_carrier?.iata_code
+      )
+      const operatingCarrierCode = this.normalizeCode(
+        segment.operating_carrier?.iata_code
+      )
+
+      if (
+        segment.marketing_carrier &&
+        marketingCarrierCode === normalizedCarrierCode
+      ) {
+        matchingCarriers.push(segment.marketing_carrier)
+      }
+
+      if (
+        segment.operating_carrier &&
+        operatingCarrierCode === normalizedCarrierCode
+      ) {
+        matchingCarriers.push(segment.operating_carrier)
+      }
+    }
+
+    if (
+      fallbackCarrier &&
+      this.normalizeCode(fallbackCarrier.iata_code) === normalizedCarrierCode
+    ) {
+      matchingCarriers.push(fallbackCarrier)
+    }
+
+    for (const carrier of matchingCarriers) {
+      const airlineName = this.cleanOptionalText(carrier.name)
+      const airlineLogoSymbolUrl = this.cleanOptionalText(
+        carrier.logo_symbol_url
+      )
+      const airlineLogoLockupUrl = this.cleanOptionalText(
+        carrier.logo_lockup_url
+      )
+
+      if (airlineName || airlineLogoSymbolUrl || airlineLogoLockupUrl) {
+        return {
+          airlineName,
+          airlineLogoSymbolUrl,
+          airlineLogoLockupUrl,
+        }
+      }
+    }
+
+    return {
+      airlineName: null,
+      airlineLogoSymbolUrl: null,
+      airlineLogoLockupUrl: null,
+    }
+  }
+
   private buildCarrierStats(segments: DuffelSegment[]): Map<string, CarrierStats> {
     const stats = new Map<string, CarrierStats>()
 
@@ -119,6 +211,7 @@ export class DuffelAdapter implements FlightProvider {
 
       if (this.isUsableCarrierCode(operating)) {
         const existing = stats.get(operating)
+
         if (existing) {
           existing.operatingCount += 1
         } else {
@@ -133,6 +226,7 @@ export class DuffelAdapter implements FlightProvider {
 
       if (this.isUsableCarrierCode(marketing)) {
         const existing = stats.get(marketing)
+
         if (existing) {
           existing.marketingCount += 1
         } else {
@@ -170,10 +264,14 @@ export class DuffelAdapter implements FlightProvider {
     return segments.map((segment) => ({
       origin: this.normalizeCode(segment.origin?.iata_code),
       destination: this.normalizeCode(segment.destination?.iata_code),
-      marketingCarrier: this.isUsableCarrierCode(segment.marketing_carrier?.iata_code)
+      marketingCarrier: this.isUsableCarrierCode(
+        segment.marketing_carrier?.iata_code
+      )
         ? this.normalizeCode(segment.marketing_carrier?.iata_code)
         : undefined,
-      operatingCarrier: this.isUsableCarrierCode(segment.operating_carrier?.iata_code)
+      operatingCarrier: this.isUsableCarrierCode(
+        segment.operating_carrier?.iata_code
+      )
         ? this.normalizeCode(segment.operating_carrier?.iata_code)
         : undefined,
       marketingFlightNumber: this.isUsableFlightNumber(
@@ -325,12 +423,15 @@ export class DuffelAdapter implements FlightProvider {
           firstSegment?.origin !== this.normalizeCode(params.origin) ||
           lastSegment?.destination !== this.normalizeCode(params.destination)
         ) {
-          console.log("Duffel skipped itinerary that does not match requested route endpoints", {
-            requestedOrigin: params.origin,
-            requestedDestination: params.destination,
-            firstSegment,
-            lastSegment,
-          })
+          console.log(
+            "Duffel skipped itinerary that does not match requested route endpoints",
+            {
+              requestedOrigin: params.origin,
+              requestedDestination: params.destination,
+              firstSegment,
+              lastSegment,
+            }
+          )
           continue
         }
 
@@ -353,8 +454,17 @@ export class DuffelAdapter implements FlightProvider {
           continue
         }
 
+        const carrierBranding = this.getCarrierBranding(
+          rawSegments,
+          dominantCarrier,
+          offer.owner ?? null
+        )
+
         results.push({
           airline: dominantCarrier,
+          airlineName: carrierBranding.airlineName,
+          airlineLogoSymbolUrl: carrierBranding.airlineLogoSymbolUrl,
+          airlineLogoLockupUrl: carrierBranding.airlineLogoLockupUrl,
           flightNumber: representativeFlightNumber,
           departureTime: firstSegment?.departureTime,
           arrivalTime: lastSegment?.arrivalTime,

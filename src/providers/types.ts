@@ -14,6 +14,9 @@ export interface FlightSegment {
 
 export interface FlightResult {
   airline: string
+  airlineName?: string | null
+  airlineLogoSymbolUrl?: string | null
+  airlineLogoLockupUrl?: string | null
   flightNumber: string
 
   // Optional because some providers don't return them

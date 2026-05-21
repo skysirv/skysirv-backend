@@ -174,6 +174,9 @@ export async function getUserWatchlist(userId: string) {
               .selectFrom(validFlightHistory)
               .select([
                 "valid_flight_history.airline",
+                "valid_flight_history.airline_name",
+                "valid_flight_history.airline_logo_symbol_url",
+                "valid_flight_history.airline_logo_lockup_url",
                 "valid_flight_history.flight_number",
                 "valid_flight_history.price",
                 "valid_flight_history.currency",
@@ -204,6 +207,9 @@ export async function getUserWatchlist(userId: string) {
                 eb2.fn.jsonAgg(
                   sql`json_build_object(
                     'airline', ${sql.ref("deduped_recommended_flights.airline")},
+                    'airlineName', ${sql.ref("deduped_recommended_flights.airline_name")},
+                    'airlineLogoSymbolUrl', ${sql.ref("deduped_recommended_flights.airline_logo_symbol_url")},
+                    'airlineLogoLockupUrl', ${sql.ref("deduped_recommended_flights.airline_logo_lockup_url")},
                     'flightNumber', ${sql.ref("deduped_recommended_flights.flight_number")},
                     'price', ${sql.ref("deduped_recommended_flights.price")} / 100.0,
                     'currency', ${sql.ref("deduped_recommended_flights.currency")},

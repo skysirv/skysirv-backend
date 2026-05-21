@@ -48,6 +48,8 @@ export type NormalizedBookingSegment = {
   id: string
   airlineName: string | null
   airlineIataCode: string | null
+  airlineLogoSymbolUrl: string | null
+  airlineLogoLockupUrl: string | null
   flightNumber: string | null
   origin: NormalizedBookingAirport
   destination: NormalizedBookingAirport
@@ -86,6 +88,8 @@ export type NormalizedBookingOffer = {
   summary: {
     airlineName: string
     airlineIataCode: string | null
+    airlineLogoSymbolUrl: string | null
+    airlineLogoLockupUrl: string | null
     flightNumber: string | null
     departureTime: string | null
     arrivalTime: string | null
