@@ -544,7 +544,7 @@ export function startWorkers() {
             departureDate: watchlistRow.departure_date,
           },
           {
-            jobId: r.route_hash,
+            jobId: `${r.route_hash}-${Date.now()}`,
             removeOnComplete: true,
             removeOnFail: 100,
             delay: 2000,
