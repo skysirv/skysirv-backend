@@ -3,7 +3,7 @@ import type { DB } from "../../db/types.js"
 
 export type CreateAlertInput = {
   route_hash: string
-  alert_type: "absolute" | "percentage" | "route_lowest"
+  alert_type: "absolute" | "percentage" | "pct_drop_milestone" | "route_lowest"
   threshold_value?: string | number | null
   direction?: "below" | "above" | null
   watchlist_id?: number | null

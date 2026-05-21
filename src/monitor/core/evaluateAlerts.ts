@@ -100,7 +100,10 @@ export async function evaluateAlerts(
     // MILESTONE % DROP ALERT
     // =========================================================
 
-    if (alert.alert_type === "pct_drop_milestone") {
+    if (
+      alert.alert_type === "pct_drop_milestone" ||
+      alert.alert_type === "percentage"
+    ) {
 
       if (threshold === null || threshold <= 0 || threshold > 90) {
         continue

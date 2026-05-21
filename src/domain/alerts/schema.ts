@@ -5,7 +5,12 @@ export const createAlertSchema = z.object({
 
   watchlist_id: z.number().int().positive().nullable().optional(),
 
-  alert_type: z.enum(["absolute", "percentage", "route_lowest"]),
+  alert_type: z.enum([
+    "absolute",
+    "percentage",
+    "pct_drop_milestone",
+    "route_lowest",
+  ]),
 
   threshold_value: z.number().positive().nullable().optional(),
 
