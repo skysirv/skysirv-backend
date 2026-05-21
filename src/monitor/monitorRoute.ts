@@ -434,18 +434,14 @@ export async function monitorRoute(
   for (const [index, p] of filteredPrices.entries()) {
     const priceInCents = Math.round(p.price * 100)
 
-    console.log("💾 Inserting price history:", {
+    console.log("💾 Inserting fare row", {
       airline: p.airline,
       airlineName: p.airlineName ?? null,
-      airlineLogoSymbolUrl: p.airlineLogoSymbolUrl ?? null,
-      airlineLogoLockupUrl: p.airlineLogoLockupUrl ?? null,
       flightNumber: p.flightNumber,
-      priceDollars: p.price,
-      priceInCents,
+      price: p.price,
       currency: p.currency,
       stopCount: p.stopCount ?? null,
-      itineraryKey: p.itineraryKey ?? null,
-      segmentCount: p.segments?.length ?? 0,
+      hasLogo: Boolean(p.airlineLogoSymbolUrl || p.airlineLogoLockupUrl),
     })
 
     await db
