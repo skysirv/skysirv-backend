@@ -448,6 +448,11 @@ export function startWorkers() {
 
       if (routes.length === 0) break
 
+      console.log("🔎 Monitored routes batch:", {
+        count: routes.length,
+        cursor,
+      })
+
       for (const r of routes) {
         const routeParts = r.route.split("-")
 
@@ -504,7 +509,22 @@ export function startWorkers() {
 
         const due = now - lastChecked >= finalIntervalMs
 
+        console.log("🧭 Monitor route due check:", {
+          route: r.route,
+          routeHash: r.route_hash,
+          lastCheckedAt: r.last_checked_at,
+          finalIntervalMinutes: Math.round(finalIntervalMs / 1000 / 60),
+          minutesSinceLastCheck: Math.round((now - lastChecked) / 1000 / 60),
+          due,
+        })
+
         if (!due) continue
+
+        console.log("📬 Queueing monitor job:", {
+          route: r.route,
+          routeHash: r.route_hash,
+          departureDate: watchlistRow.departure_date,
+        })
 
         await monitorQueue.add(
           QUEUE_NAMES.monitor,
