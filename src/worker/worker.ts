@@ -253,6 +253,30 @@ function selectBestFlights(results: FlightResult[], limit = 12): FlightResult[] 
   return ranked.slice(0, limit)
 }
 
+function getDashboardUrlForPlan(planName?: string | null): string {
+  const baseUrl = env.FRONTEND_BASE_URL
+
+  if (!planName) {
+    return `${baseUrl}/dashboard`
+  }
+
+  const normalizedPlan = planName.toLowerCase()
+
+  if (normalizedPlan.includes("business") || normalizedPlan.includes("enterprise")) {
+    return `${baseUrl}/dashboard/business`
+  }
+
+  if (normalizedPlan.includes("pro")) {
+    return `${baseUrl}/dashboard/pro`
+  }
+
+  if (normalizedPlan.includes("free")) {
+    return `${baseUrl}/dashboard/free`
+  }
+
+  return `${baseUrl}/dashboard`
+}
+
 export function startWorkers() {
   const providers = [new DuffelAdapter(), new AmadeusAdapter()]
 
@@ -396,12 +420,34 @@ export function startWorkers() {
   const emailWorker = new Worker(
     QUEUE_NAMES.sendEmail,
     async (job) => {
-      const { userId, airline, price, currency, routeHash } = job.data as {
+      const {
+        userId,
+        airline,
+        airlineName,
+        flightNumber,
+        price,
+        currency,
+        routeHash,
+        origin,
+        destination,
+        departureDate,
+        alertType,
+        thresholdValue,
+        direction,
+      } = job.data as {
         userId: string
         airline: string
+        airlineName?: string | null
+        flightNumber?: string | null
         price: number
         currency: string
         routeHash: string
+        origin?: string | null
+        destination?: string | null
+        departureDate?: string | Date | null
+        alertType?: string | null
+        thresholdValue?: number | string | null
+        direction?: string | null
       }
 
       console.log("📧 Sending alert email to user:", userId)
@@ -416,13 +462,43 @@ export function startWorkers() {
         throw new Error("User email not found")
       }
 
+      const subscription = await db
+        .selectFrom("subscriptions")
+        .select(["plan_id", "status"])
+        .where("user_id", "=", userId)
+        .where("status", "=", "active")
+        .executeTakeFirst()
+
+      let planName: string | null = null
+
+      if (subscription?.plan_id) {
+        const plan = await db
+          .selectFrom("plans")
+          .select(["name"])
+          .where("id", "=", subscription.plan_id)
+          .executeTakeFirst()
+
+        planName = plan?.name ?? null
+      }
+
+      const dashboardUrl = getDashboardUrlForPlan(planName)
+
       await sendAlertEmail({
         userId: user.id,
         to: user.email,
         airline,
+        airlineName,
+        flightNumber,
         price,
         currency,
         routeHash,
+        origin,
+        destination,
+        departureDate,
+        alertType,
+        thresholdValue,
+        direction,
+        dashboardUrl,
       })
 
       console.log("📨 Email sent to:", user.email)

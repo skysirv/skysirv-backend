@@ -431,7 +431,7 @@ export async function monitorRoute(
 
   const capturedAt = new Date()
 
-  for (const p of filteredPrices) {
+  for (const [index, p] of filteredPrices.entries()) {
     const priceInCents = Math.round(p.price * 100)
 
     console.log("💾 Inserting price history:", {
@@ -544,12 +544,14 @@ export async function monitorRoute(
       })
     }
 
-    console.log("➡️ Evaluating alerts")
+    if (index === 0) {
+      console.log("➡️ Evaluating alerts for best fare")
 
-    await evaluateAlerts(db, queue, route.routeHash, {
-      ...p,
-      price: p.price,
-    })
+      await evaluateAlerts(db, queue, route.routeHash, {
+        ...p,
+        price: p.price,
+      })
+    }
   }
 
   console.log("✅ monitorRoute COMPLETE", route.routeHash)

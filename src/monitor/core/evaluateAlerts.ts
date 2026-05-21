@@ -4,6 +4,7 @@ import { QUEUE_NAMES } from "../../infra/queues.js"
 
 export type NormalizedPrice = {
   airline: string
+  airlineName?: string | null
   flightNumber: string
   price: number
   currency: string
@@ -61,6 +62,13 @@ export async function evaluateAlerts(
     .execute()
 
   console.log("🔎 Alerts found:", alerts.length)
+
+  const watchlistRoute = await db
+    .selectFrom("watchlist")
+    .select(["origin", "destination", "departure_date"])
+    .where("route_hash", "=", routeHash)
+    .orderBy("created_at", "desc")
+    .executeTakeFirst()
 
   const cooldownMs = getCooldownMs()
 
@@ -228,9 +236,17 @@ export async function evaluateAlerts(
     await emailQueue.add(QUEUE_NAMES.sendEmail, {
       userId: alert.user_id,
       airline: price.airline,
+      airlineName: price.airlineName ?? null,
+      flightNumber: price.flightNumber ?? null,
       price: price.price,
       currency: price.currency,
       routeHash,
+      origin: watchlistRoute?.origin ?? null,
+      destination: watchlistRoute?.destination ?? null,
+      departureDate: watchlistRoute?.departure_date ?? null,
+      alertType: alert.alert_type,
+      thresholdValue: threshold,
+      direction: alert.direction ?? null,
     })
   }
 }
