@@ -90,7 +90,7 @@ function isValidFlightNumber(value: string | null | undefined): boolean {
   if (!flightNumber) return false
   if (flightNumber.length < 1) return false
 
-  return /^[A-Z0-9-]{1,10}$/.test(flightNumber)
+  return /^[A-Z0-9+-]{1,40}$/.test(flightNumber)
 }
 
 function isValidPrice(value: number): boolean {
@@ -220,17 +220,31 @@ function sanitizePrices(prices: NormalizedPrice[]): NormalizedPrice[] {
       normalizeText(raw.itineraryKey) || buildFallbackItineraryKey(raw)
 
     if (isUnknownAirline(airline)) {
-      console.log("🚫 Skipping fare: unknown airline", raw)
+      console.log("🚫 Skipping fare: unknown airline", {
+        airline: raw.airline,
+        flightNumber: raw.flightNumber,
+        itineraryKey: raw.itineraryKey ?? null,
+      })
       continue
     }
 
     if (!isValidFlightNumber(flightNumber)) {
-      console.log("🚫 Skipping fare: invalid flight number", raw)
+      console.log("🚫 Skipping fare: invalid flight number", {
+        airline: raw.airline,
+        flightNumber: raw.flightNumber,
+        itineraryKey: raw.itineraryKey ?? null,
+      })
       continue
     }
 
     if (!isValidPrice(price)) {
-      console.log("🚫 Skipping fare: invalid or suspiciously low base price", raw)
+      console.log("🚫 Skipping fare: invalid or suspiciously low base price", {
+        airline: raw.airline,
+        flightNumber: raw.flightNumber,
+        price: raw.price,
+        currency: raw.currency,
+        itineraryKey: raw.itineraryKey ?? null,
+      })
       continue
     }
 
