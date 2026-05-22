@@ -5,6 +5,7 @@ import type { Database as DB } from "../db/types.js"
 import { evaluateAlerts } from "./core/evaluateAlerts.js"
 import { computeIntelligence } from "../intelligence/computeIntelligence.js"
 import { computePriceInsight } from "./core/priceIntelligence.js"
+import { getFallbackAirlineBranding } from "../airlines/airlineBranding.js"
 
 export type NormalizedItinerarySegment = {
   origin: string
@@ -209,6 +210,7 @@ function sanitizePrices(prices: NormalizedPrice[]): NormalizedPrice[] {
     const flightNumber = normalizeFlightNumber(raw.flightNumber)
     const currency = normalizeCurrency(raw.currency)
     const price = Number(raw.price)
+    const fallbackBranding = getFallbackAirlineBranding(airline)
     const itinerarySegments = sanitizeItinerarySegments(raw.segments)
     const stopCount =
       typeof raw.stopCount === "number" && Number.isFinite(raw.stopCount)
@@ -253,17 +255,17 @@ function sanitizePrices(prices: NormalizedPrice[]): NormalizedPrice[] {
       airlineName:
         typeof raw.airlineName === "string" && raw.airlineName.trim()
           ? raw.airlineName.trim()
-          : null,
+          : fallbackBranding?.name ?? null,
       airlineLogoSymbolUrl:
         typeof raw.airlineLogoSymbolUrl === "string" &&
           raw.airlineLogoSymbolUrl.trim()
           ? raw.airlineLogoSymbolUrl.trim()
-          : null,
+          : fallbackBranding?.logoSymbolUrl ?? null,
       airlineLogoLockupUrl:
         typeof raw.airlineLogoLockupUrl === "string" &&
           raw.airlineLogoLockupUrl.trim()
           ? raw.airlineLogoLockupUrl.trim()
-          : null,
+          : fallbackBranding?.logoLockupUrl ?? null,
       flightNumber,
       price: Number(price.toFixed(2)),
       currency,

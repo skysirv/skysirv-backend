@@ -357,11 +357,12 @@ export function startWorkers() {
             return []
           })
 
-          console.log("📦 Raw provider results:", rawResults.length)
-
           const selectedResults = selectBestFlights(rawResults, 12)
 
-          console.log("🏆 Selected best flights:", selectedResults.length)
+          console.log("🏆 Provider flight selection complete", {
+            rawCount: rawResults.length,
+            selectedCount: selectedResults.length,
+          })
 
           return selectedResults.map((r) => ({
             airline: getPrimaryCarrier(r) || r.airline,

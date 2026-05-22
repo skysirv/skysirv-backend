@@ -25,6 +25,18 @@ function cleanFirstName(value: unknown) {
   return name
 }
 
+function cleanOptionalLastName(value: unknown) {
+  if (value === undefined || value === null) return null
+  if (typeof value !== "string") return null
+
+  const name = value.trim().replace(/\s+/g, " ")
+
+  if (!name) return null
+  if (name.length > 120) return null
+
+  return name
+}
+
 function cleanSmsPhoneNumber(value: unknown) {
   if (typeof value !== "string") return null
 
@@ -130,9 +142,11 @@ export async function userPreferencesRoutes(app: FastifyInstance) {
 
       const body = request.body as {
         firstName?: unknown
+        lastName?: unknown
       }
 
       const firstName = cleanFirstName(body.firstName)
+      const lastName = cleanOptionalLastName(body.lastName)
 
       if (!firstName) {
         return reply.status(400).send({
@@ -140,13 +154,14 @@ export async function userPreferencesRoutes(app: FastifyInstance) {
         })
       }
 
-      const updatedUser = await app.db
+      const updatedUser = await (app.db as any)
         .updateTable("users")
         .set({
           first_name: firstName,
+          last_name: lastName,
         })
         .where("id", "=", user.id)
-        .returning(["id", "email", "first_name"])
+        .returning(["id", "email", "first_name", "last_name"])
         .executeTakeFirstOrThrow()
 
       return reply.send({

@@ -317,9 +317,9 @@ export async function authRoutes(app: FastifyInstance) {
         email: string
       }
 
-      const user = await app.db
+      const user = await (app.db as any)
         .selectFrom("users")
-        .select(["id", "email", "is_admin", "created_at", "is_verified"])
+        .select(["id", "email", "is_admin", "created_at", "is_verified", "first_name", "last_name"])
         .where("id", "=", authUser.id)
         .executeTakeFirst()
 
@@ -355,7 +355,9 @@ export async function authRoutes(app: FastifyInstance) {
           email: user.email,
           is_admin: user.is_admin,
           is_verified: user.is_verified,
-          created_at: user.created_at
+          created_at: user.created_at,
+          first_name: user.first_name,
+          last_name: user.last_name,
         },
         subscription: activeSubscription
           ? {
