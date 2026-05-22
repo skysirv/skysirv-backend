@@ -77,11 +77,27 @@ type LucySaveFirstNameAction = {
   confirmationPrompt: string
 }
 
+type LucySaveVisibleFlightAction = {
+  type: "save_visible_flight"
+  status: "needs_confirmation"
+  origin: string
+  destination: string
+  departureDate: string | null
+  airline: string | null
+  airlineName: string | null
+  flightNumber: string | null
+  price: number | null
+  currency: string | null
+  flightLabel: string
+  confirmationPrompt: string
+}
+
 type LucySuggestedAction =
   | LucyWatchlistAction
   | LucyPreferredAirportsAction
   | LucyPreferredRouteAction
   | LucySaveFirstNameAction
+  | LucySaveVisibleFlightAction
 
 type LucyStructuredChatResponse = {
   reply: string
@@ -449,6 +465,76 @@ function cleanLucyPreferredRouteAction(
   }
 }
 
+function cleanLucySaveVisibleFlightAction(
+  value: unknown
+): LucySaveVisibleFlightAction | null {
+  if (!value || typeof value !== "object") return null
+
+  const input = value as Partial<LucySaveVisibleFlightAction>
+
+  if (input.type !== "save_visible_flight") return null
+
+  const origin = cleanAirportCode(input.origin)
+  const destination = cleanAirportCode(input.destination)
+
+  if (!origin || !destination) return null
+  if (origin === destination) return null
+
+  const departureDate =
+    typeof input.departureDate === "string" && input.departureDate.trim()
+      ? input.departureDate.trim().slice(0, 40)
+      : null
+
+  const airline =
+    typeof input.airline === "string" && input.airline.trim()
+      ? input.airline.trim().toUpperCase().slice(0, 20)
+      : null
+
+  const airlineName =
+    typeof input.airlineName === "string" && input.airlineName.trim()
+      ? input.airlineName.trim().slice(0, 120)
+      : null
+
+  const flightNumber =
+    typeof input.flightNumber === "string" && input.flightNumber.trim()
+      ? input.flightNumber.trim().toUpperCase().slice(0, 40)
+      : null
+
+  const price =
+    typeof input.price === "number" && Number.isFinite(input.price)
+      ? input.price
+      : null
+
+  const currency =
+    typeof input.currency === "string" && input.currency.trim()
+      ? input.currency.trim().toUpperCase().slice(0, 8)
+      : "USD"
+
+  const flightLabel =
+    typeof input.flightLabel === "string" && input.flightLabel.trim()
+      ? input.flightLabel.trim().slice(0, 160)
+      : `${airlineName || airline || "Flight"}${flightNumber ? ` ${flightNumber}` : ""}`
+
+  return {
+    type: "save_visible_flight",
+    status: "needs_confirmation",
+    origin,
+    destination,
+    departureDate,
+    airline,
+    airlineName,
+    flightNumber,
+    price,
+    currency,
+    flightLabel,
+    confirmationPrompt:
+      typeof input.confirmationPrompt === "string" &&
+        input.confirmationPrompt.trim()
+        ? input.confirmationPrompt.trim().slice(0, 240)
+        : `Save ${flightLabel} from ${origin} to ${destination} to your Saved Flights?`,
+  }
+}
+
 function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
   if (!value || typeof value !== "object") return null
 
@@ -468,6 +554,10 @@ function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
 
   if (input.type === "save_first_name") {
     return cleanLucySaveFirstNameAction(value)
+  }
+
+  if (input.type === "save_visible_flight") {
+    return cleanLucySaveVisibleFlightAction(value)
   }
 
   return null
@@ -1165,7 +1255,7 @@ The JSON must match this shape:
     "airportCodes": ["JFK", "LHR"],
     "airportLabels": ["New York (JFK)", "London (LHR)"],
     "confirmationPrompt": "Would you like me to save New York (JFK) and London (LHR) as preferred airports?"
-    } | {
+  } | {
     "type": "save_preferred_route",
     "status": "needs_confirmation",
     "origin": "JFK",
@@ -1177,19 +1267,45 @@ The JSON must match this shape:
     "status": "needs_confirmation",
     "firstName": "Tony",
     "confirmationPrompt": "Would you like me to save Tony as your first name for future Skysirv sessions?"
+  } | {
+    "type": "save_visible_flight",
+    "status": "needs_confirmation",
+    "origin": "JFK",
+    "destination": "MIA",
+    "departureDate": "2026-05-28",
+    "airline": "AA",
+    "airlineName": "American Airlines",
+    "flightNumber": "AA2026",
+    "price": 268,
+    "currency": "USD",
+    "flightLabel": "American Airlines AA2026",
+    "confirmationPrompt": "Save American Airlines AA2026 from JFK to MIA to your Saved Flights?"
   }
 }
 
 Action rules:
-- Only include an action when the user has provided or confirmed a clear origin airport, destination airport, and departure date.
 - Use supported Skysirv airport codes from the provided airport directory for origin and destination.
-- Use MM-DD-YYYY for departureDate.
-- Never use YYYY-MM-DD, MM/DD/YYYY, or natural language dates inside action.departureDate.
-- For example, May 22, 2026 must be returned as "05-22-2026".
-- When asking for confirmation, include the same MM-DD-YYYY date in the action object.
-- Do not say "confirmed", "preparing", or "I’m preparing" when the user has not yet completed the backend watchlist action.
-- The correct wording before backend confirmation is: "Would you like me to add this route to your watchlist?"
+- For add_watchlist_route actions, only include an action when the user has provided or confirmed a clear origin airport, destination airport, and departure date.
+- For add_watchlist_route actions, use MM-DD-YYYY inside action.departureDate because the backend action expects that format.
+- For add_watchlist_route actions, never use YYYY-MM-DD, MM/DD/YYYY, or natural language dates inside action.departureDate.
+- For example, May 22, 2026 must be returned inside action.departureDate as "05-22-2026".
+- In user-facing reply text and confirmationPrompt, use a natural readable date like “May 22, 2026” whenever possible.
+- The action object may use "05-22-2026", but the user-facing confirmation should say something like: "Would you like me to add Boston to Miami on May 22, 2026 to your watchlist?"
+- For save_visible_flight actions, use the departureDate from the matching dashboard route context. YYYY-MM-DD is allowed for save_visible_flight because Saved Flights accepts dashboard route dates.
+- For save_visible_flight user-facing confirmationPrompt, use a natural readable date if a date is available.
+- Do not say "confirmed", "preparing", or "I’m preparing" when the user has not yet completed the backend watchlist or saved-flight action.
+- The correct wording before backend confirmation is: "Would you like me to add this route to your watchlist?" or "Would you like me to save this flight to your Saved Flights?"
 - No duplicate messages.
+
+Saved flight action rules:
+- If the user asks to save a visible flight, return a save_visible_flight action when the specific visible flight can be identified from recommendedFlights.
+- Match visible flights by flightNumber first, then airlineName or airline code, then price if needed.
+- Only save flights that appear in the provided recommendedFlights context.
+- Do not say Skysirv cannot save individual flights.
+- Do not claim the flight has been saved until frontend/backend confirmation is provided.
+- Before backend confirmation, return the save_visible_flight action with action.confirmationPrompt.
+- If the user says “save that flight” or “save it,” use the most recently discussed visible flight from the page-session conversation.
+- If the flight is ambiguous, ask one short follow-up question and return action: null.
 
 First name memory rules:
 - If the user says their name or asks whether Lucy knows their name and firstName is not saved, ask what name they would like Lucy to use.
