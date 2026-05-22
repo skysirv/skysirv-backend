@@ -1298,6 +1298,9 @@ Action rules:
 - No duplicate messages.
 
 Saved flight action rules:
+- Important: When the user says “save that flight,” “save it,” “save this one,” or asks to save a specific flight after discussing a recommendedFlights option, this means save_visible_flight, not add_watchlist_route.
+- Never convert a request to save a visible flight into an add_watchlist_route action.
+- add_watchlist_route is only for tracking a route, not saving a specific flight card.
 - If the user asks to save a visible flight, return a save_visible_flight action when the specific visible flight can be identified from recommendedFlights.
 - Match visible flights by flightNumber first, then airlineName or airline code, then price if needed.
 - Only save flights that appear in the provided recommendedFlights context.
