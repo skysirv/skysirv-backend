@@ -1609,6 +1609,21 @@ Do not say the route has been added.
 The tool only prepares the action. Skysirv must confirm with the user and save it through the backend.
 Use MM-DD-YYYY for departure dates.
 
+When the user asks to save a visible flight, save that flight, save it, save this one, or add a specific visible flight to Saved Flights, call the prepare_save_visible_flight tool.
+
+A visible flight means a flight shown in the current dashboard route/watchlist recommendedFlights context.
+
+If the user recently discussed a specific flight number, such as AA2026 or flight 2026, use that flight from recommendedFlights.
+
+Never convert a request to save a specific visible flight into prepare_watchlist_route.
+
+prepare_watchlist_route is only for tracking a route.
+prepare_save_visible_flight is for saving a specific recommended flight card to the user's Saved Flights.
+
+Do not say Skysirv cannot save individual flights.
+Do not claim the flight has been saved until the frontend/backend confirms it.
+Ask one short confirmation question before saving.
+
 Voice behavior rules:
 - Never initiate conversation after the voice session starts. Wait silently until the user clearly asks a Skysirv or travel-related question.
 - Ignore coughing, breathing, silence, taps, keyboard sounds, fan noise, road noise, and background conversations. Do not respond unless the user clearly asks Lucy for Skysirv or travel help.
@@ -1716,6 +1731,80 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
                       "destination",
                       "departureDate",
                       "routeLabel",
+                      "confirmationPrompt",
+                    ],
+                  },
+                },
+                {
+                  type: "function",
+                  name: "prepare_save_visible_flight",
+                  description:
+                    "Prepare a Skysirv Saved Flights action when the user asks Lucy to save a specific visible recommended flight from the current dashboard. This does not save the flight yet; Skysirv must ask the user for confirmation first.",
+                  parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      origin: {
+                        type: "string",
+                        description:
+                          "Supported origin airport code from the visible dashboard route, such as JFK.",
+                      },
+                      destination: {
+                        type: "string",
+                        description:
+                          "Supported destination airport code from the visible dashboard route, such as MIA.",
+                      },
+                      departureDate: {
+                        type: "string",
+                        description:
+                          "Departure date from the matching dashboard route context. YYYY-MM-DD is allowed for Saved Flights.",
+                      },
+                      airline: {
+                        type: "string",
+                        description:
+                          "Airline code for the visible flight, such as AA.",
+                      },
+                      airlineName: {
+                        type: "string",
+                        description:
+                          "Human-readable airline name when available, such as American Airlines.",
+                      },
+                      flightNumber: {
+                        type: "string",
+                        description:
+                          "Visible flight number from recommendedFlights, such as AA2026.",
+                      },
+                      price: {
+                        type: "number",
+                        description:
+                          "Visible flight price in dollars, not cents.",
+                      },
+                      currency: {
+                        type: "string",
+                        description:
+                          "Flight currency, such as USD.",
+                      },
+                      flightLabel: {
+                        type: "string",
+                        description:
+                          "Human-friendly flight label, such as American Airlines AA2026.",
+                      },
+                      confirmationPrompt: {
+                        type: "string",
+                        description:
+                          "A short confirmation question asking whether the user wants to save this visible flight to Saved Flights.",
+                      },
+                    },
+                    required: [
+                      "origin",
+                      "destination",
+                      "departureDate",
+                      "airline",
+                      "airlineName",
+                      "flightNumber",
+                      "price",
+                      "currency",
+                      "flightLabel",
                       "confirmationPrompt",
                     ],
                   },
