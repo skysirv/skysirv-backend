@@ -853,19 +853,40 @@ function isVisibleFlightSaveIntent(message: string) {
 
   if (!normalized) return false
 
-  const mentionsSave =
-    normalized.includes("save") ||
-    normalized.includes("saved flights") ||
-    normalized.includes("add it to my saved flights")
+  const savedFlightQuestionSignals = [
+    "what flights do i have saved",
+    "what saved flights",
+    "show me my saved flights",
+    "do i have that flight saved",
+    "is that flight saved",
+    "have i saved that flight",
+    "which flights are saved",
+    "flights do i have saved",
+    "my saved flights",
+  ]
 
-  const mentionsFlight =
-    normalized.includes("flight") ||
-    normalized.includes("that one") ||
-    normalized.includes("this one") ||
-    normalized.includes("save it") ||
-    normalized.includes("save that")
+  if (
+    savedFlightQuestionSignals.some((signal) =>
+      normalized.includes(signal)
+    )
+  ) {
+    return false
+  }
 
-  return mentionsSave && mentionsFlight
+  const directSaveSignals = [
+    "save that flight",
+    "save this flight",
+    "save the flight",
+    "save flight",
+    "save it to my saved flights",
+    "save this one",
+    "save that one",
+    "add that flight to my saved flights",
+    "add this flight to my saved flights",
+    "add it to my saved flights",
+  ]
+
+  return directSaveSignals.some((signal) => normalized.includes(signal))
 }
 
 function formatReadableDate(value?: string | null) {
@@ -1179,6 +1200,25 @@ async function getLucyAccountContext({
     .orderBy("created_at", "desc")
     .execute()
 
+  const savedFlights = await app.db
+    .selectFrom("saved_flights")
+    .select([
+      "id",
+      "origin",
+      "destination",
+      "departure_date",
+      "airline",
+      "flight_number",
+      "price",
+      "currency",
+      "status",
+      "saved_at",
+    ])
+    .where("user_id", "=", userId)
+    .orderBy("saved_at", "desc")
+    .limit(20)
+    .execute()
+
   const remainingTrackedRoutes =
     routeLimit.value === null
       ? "unlimited"
@@ -1203,6 +1243,7 @@ async function getLucyAccountContext({
     remainingTrackedRoutes,
     preferredAirports,
     preferredRoutes,
+    savedFlights,
     frontendTier: frontendTier || "not provided",
   }
 }
@@ -1368,6 +1409,27 @@ ${JSON.stringify(
         null,
         2
       )}
+
+Saved flights context:
+${JSON.stringify(
+        accountContext.savedFlights.map((flight) => ({
+          id: flight.id,
+          origin: flight.origin,
+          destination: flight.destination,
+          departureDate: flight.departure_date,
+          airline: flight.airline,
+          flightNumber: flight.flight_number,
+          price:
+            flight.price != null && Number.isFinite(Number(flight.price))
+              ? Number(flight.price) / 100
+              : null,
+          currency: flight.currency,
+          status: flight.status,
+          savedAt: flight.saved_at,
+        })),
+        null,
+        2
+      )}      
 
 Frontend dashboard tier hint: ${accountContext.frontendTier}
 
