@@ -1818,9 +1818,9 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
                   },
                   turn_detection: {
                     type: "server_vad",
-                    threshold: 0.84,
-                    prefix_padding_ms: 250,
-                    silence_duration_ms: 1300,
+                    threshold: 0.9,
+                    prefix_padding_ms: 200,
+                    silence_duration_ms: 1600,
                   },
                 },
                 output: {
