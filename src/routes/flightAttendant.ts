@@ -1659,6 +1659,36 @@ ${JSON.stringify(
     2
   )}
 
+Saved flights:
+${JSON.stringify(
+    accountContext.savedFlights.map((flight) => ({
+      id: flight.id,
+      origin: flight.origin,
+      destination: flight.destination,
+      departureDate: flight.departure_date,
+      airline: flight.airline,
+      flightNumber: flight.flight_number,
+      price:
+        flight.price != null && Number.isFinite(Number(flight.price))
+          ? Number(flight.price) / 100
+          : null,
+      currency: flight.currency,
+      status: flight.status,
+      savedAt: flight.saved_at,
+    })),
+    null,
+    2
+  )}
+
+Saved flights behavior:
+When the user asks what flights they have saved, answer only from the Saved flights context above.
+If Saved flights contains one or more items, never say the user has no saved flights.
+If Saved flights is empty, say there are no saved flights yet.
+Keep the voice answer short.
+For saved flights, mention route, airline, flight number, price, currency, and status when available.
+Do not ask to save a flight when the user is asking what flights are already saved.
+Do not confuse “what flights do I have saved?” with “save this flight.”
+
 Realtime action behavior:
 If the user asks to add a route, save a route, configure alerts, update account settings, or remember a preference, do not claim it is completed.
 Say Skysirv will ask for confirmation before saving or changing anything.
