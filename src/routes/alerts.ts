@@ -43,7 +43,7 @@ export async function alertsRoutes(app: FastifyInstance) {
         .leftJoin("watchlist as w", (join) =>
           join
             .onRef("w.route_hash", "=", "a.route_hash")
-            .on(sql<boolean>`w.user_id::text = a.user_id`)
+            .on(sql<boolean>`w.user_id::text = a.user_id::text`)
         )
         .select([
           "a.id",
