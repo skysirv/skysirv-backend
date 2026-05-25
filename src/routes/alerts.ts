@@ -38,10 +38,27 @@ export async function alertsRoutes(app: FastifyInstance) {
       }
 
       const alerts = await app.db
-        .selectFrom("alerts")
-        .selectAll()
-        .where("user_id", "=", request.user.id)
-        .orderBy("created_at", "desc")
+        .selectFrom("alerts as a")
+        .leftJoin("watchlist as w", (join) =>
+          join
+            .onRef("w.route_hash", "=", "a.route_hash")
+            .onRef("w.user_id", "=", "a.user_id")
+        )
+        .select([
+          "a.id",
+          "a.user_id",
+          "a.route_hash",
+          "a.watchlist_id",
+          "a.alert_type",
+          "a.threshold_value",
+          "a.direction",
+          "a.last_triggered_price",
+          "a.created_at",
+          "w.origin as origin",
+          "w.destination as destination",
+        ])
+        .where("a.user_id", "=", request.user.id)
+        .orderBy("a.created_at", "desc")
         .execute()
 
       return reply.send(alerts)
