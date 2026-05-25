@@ -1,7 +1,10 @@
 import { FastifyInstance } from "fastify"
 import crypto from "crypto"
 import bcrypt from "bcrypt"
-import { sendVerificationEmail } from "../services/email.js"
+import {
+  sendPasswordResetEmail,
+  sendVerificationEmail
+} from "../services/email.js"
 import { env } from "../config/env.js"
 import { logAdminActivity } from "../services/adminActivity.js"
 
@@ -176,6 +179,178 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.redirect(
       `${env.FRONTEND_BASE_URL}/choose-plan?token=${encodeURIComponent(authToken)}`
     )
+  })
+
+  /**
+   * FORGOT PASSWORD
+   * POST /auth/forgot-password
+   */
+  app.post("/auth/forgot-password", async (request, reply) => {
+    const { email } = request.body as {
+      email?: string
+    }
+
+    const genericMessage =
+      "If an account exists for this email, password reset instructions will be sent."
+
+    if (!email) {
+      return {
+        success: true,
+        message: genericMessage
+      }
+    }
+
+    const normalizedEmail = email.toLowerCase().trim()
+
+    const user = await app.db
+      .selectFrom("users")
+      .select(["id", "email", "password"])
+      .where("email", "=", normalizedEmail)
+      .executeTakeFirst() as {
+        id: string
+        email: string
+        password: string | null
+      } | undefined
+
+    /**
+     * Security note:
+     * Always return the same response so attackers cannot discover
+     * whether a specific email exists in Skysirv.
+     */
+    if (!user || !user.password) {
+      return {
+        success: true,
+        message: genericMessage
+      }
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex")
+
+    const expires = new Date()
+    expires.setHours(expires.getHours() + 1)
+
+    await (app.db as any).transaction().execute(async (trx: any) => {
+      /**
+       * Invalidate old unused reset tokens for this user.
+       */
+      await trx
+        .updateTable("password_reset_tokens")
+        .set({
+          used: true
+        })
+        .where("user_id", "=", user.id)
+        .where("used", "=", false)
+        .execute()
+
+      await trx
+        .insertInto("password_reset_tokens")
+        .values({
+          id: crypto.randomUUID(),
+          user_id: user.id,
+          token: resetToken,
+          expires_at: expires,
+          used: false,
+          created_at: new Date()
+        })
+        .execute()
+    })
+
+    const resetLink = `${env.FRONTEND_BASE_URL}/?signin=1&auth=reset-password&token=${encodeURIComponent(resetToken)}`
+
+    await sendPasswordResetEmail(user.email, resetLink)
+
+    await logAdminActivity(app.db, `Password reset requested: ${user.email}`)
+
+    return {
+      success: true,
+      message: genericMessage
+    }
+  })
+
+  /**
+   * RESET PASSWORD
+   * POST /auth/reset-password
+   */
+  app.post("/auth/reset-password", async (request, reply) => {
+    const { token, password } = request.body as {
+      token?: string
+      password?: string
+    }
+
+    if (!token || !password) {
+      return reply.status(400).send({
+        error: "Reset token and new password are required"
+      })
+    }
+
+    if (password.length < 8) {
+      return reply.status(400).send({
+        error: "Password must be at least 8 characters"
+      })
+    }
+
+    const record = await (app.db as any)
+      .selectFrom("password_reset_tokens")
+      .selectAll()
+      .where("token", "=", token)
+      .executeTakeFirst()
+
+    if (!record) {
+      return reply.status(400).send({
+        error: "Invalid password reset token"
+      })
+    }
+
+    if (record.used) {
+      return reply.status(400).send({
+        error: "Password reset token already used"
+      })
+    }
+
+    if (new Date(record.expires_at) < new Date()) {
+      return reply.status(400).send({
+        error: "Password reset token expired"
+      })
+    }
+
+    const user = await app.db
+      .selectFrom("users")
+      .select(["id", "email"])
+      .where("id", "=", record.user_id)
+      .executeTakeFirst()
+
+    if (!user) {
+      return reply.status(404).send({
+        error: "User not found"
+      })
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10)
+
+    await (app.db as any).transaction().execute(async (trx: any) => {
+      await trx
+        .updateTable("users")
+        .set({
+          password: hashedPassword
+        })
+        .where("id", "=", user.id)
+        .execute()
+
+      await trx
+        .updateTable("password_reset_tokens")
+        .set({
+          used: true
+        })
+        .where("id", "=", record.id)
+        .execute()
+    })
+
+    await logAdminActivity(app.db, `Password reset completed: ${user.email}`)
+
+    return {
+      success: true,
+      message: "Password reset successfully. You can now sign in with your new password."
+    }
   })
 
   /**
@@ -377,10 +552,11 @@ export async function authRoutes(app: FastifyInstance) {
       }
     }
   )
+
   /**
- * DELETE CURRENT USER ACCOUNT
- * DELETE /auth/account
- */
+   * DELETE CURRENT USER ACCOUNT
+   * DELETE /auth/account
+   */
   app.delete(
     "/auth/account",
     { preHandler: app.authenticate },

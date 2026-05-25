@@ -74,6 +74,44 @@ export async function sendVerificationEmail(email: string, verifyLink: string) {
   }
 }
 
+export async function sendPasswordResetEmail(email: string, resetLink: string) {
+  try {
+    const response = await resend.emails.send({
+      from: FROM,
+      to: email,
+      subject: "Reset your Skysirv password ✈️",
+      html: `
+        <h2>Reset your Skysirv password</h2>
+
+        <p>We received a request to reset the password for your Skysirv account.</p>
+
+        <p>Click below to create a new password:</p>
+
+        <a href="${resetLink}" 
+           style="background:#004f94;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;">
+           Reset Password
+        </a>
+
+        <p style="margin-top:20px;color:#475569;font-size:14px">
+          This password reset link will expire soon for your security.
+        </p>
+
+        <p style="margin-top:20px;color:#666;font-size:12px">
+          If you did not request a password reset, you can safely ignore this email.
+        </p>
+
+        <p style="margin-top:20px;color:#64748b;font-size:12px">
+          Skysirv Travel Intelligence Platform
+        </p>
+      `
+    })
+
+    console.log("📨 Password reset email sent:", response)
+  } catch (error) {
+    console.error("Password reset email error:", error)
+  }
+}
+
 export async function sendFeedbackResponseEmail(
   email: string,
   message: string
