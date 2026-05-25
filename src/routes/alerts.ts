@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify"
+import { sql } from "kysely"
 import { createAlertSchema } from "../domain/alerts/schema.js"
 import { createAlert } from "../domain/alerts/service.js"
 
@@ -42,7 +43,7 @@ export async function alertsRoutes(app: FastifyInstance) {
         .leftJoin("watchlist as w", (join) =>
           join
             .onRef("w.route_hash", "=", "a.route_hash")
-            .onRef("w.user_id", "=", "a.user_id")
+            .on(sql<boolean>`w.user_id::text = a.user_id`)
         )
         .select([
           "a.id",
