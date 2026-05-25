@@ -147,6 +147,7 @@ export async function getUserWatchlist(userId: string) {
 
       (eb) => eb("latest_best_fare.price", "/", 100.0).as("latest_price"),
       "latest_best_fare.airline as latest_airline",
+      "latest_best_fare.airline_name as latest_airline_name",
       "latest_best_fare.flight_number as latest_flight_number",
       "latest_best_fare.captured_at as latest_captured_at",
       "latest_best_fare.currency as latest_currency",
