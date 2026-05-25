@@ -465,6 +465,21 @@ export async function authRoutes(app: FastifyInstance) {
       })
     }
 
+    const activeSubscription = await app.db
+      .selectFrom("subscriptions")
+      .select([
+        "id",
+        "user_id",
+        "plan_id",
+        "status",
+        "billing_interval",
+        "created_at"
+      ])
+      .where("user_id", "=", user.id)
+      .where("status", "=", "active")
+      .orderBy("created_at", "desc")
+      .executeTakeFirst()
+
     const token = app.jwt.sign({
       id: user.id,
       email: user.email
@@ -475,8 +490,19 @@ export async function authRoutes(app: FastifyInstance) {
       user: {
         id: user.id,
         email: user.email,
-        is_admin: user.is_admin
-      }
+        is_admin: user.is_admin,
+        plan: activeSubscription?.plan_id ?? "free"
+      },
+      subscription: activeSubscription
+        ? {
+          id: activeSubscription.id,
+          user_id: activeSubscription.user_id,
+          plan_id: activeSubscription.plan_id,
+          status: activeSubscription.status,
+          billing_interval: activeSubscription.billing_interval,
+          created_at: activeSubscription.created_at
+        }
+        : null
     }
   })
 
