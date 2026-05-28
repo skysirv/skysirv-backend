@@ -6,6 +6,11 @@ import {
 } from "../services/openai.js"
 import { getUserWatchlist } from "../db/watchlist.js"
 import { airportDirectory } from "../data/airports.js"
+import {
+  getActiveLucyMemories,
+  markLucyMemoriesUsed,
+  saveLucyMemory,
+} from "../services/lucyMemory.service.js"
 
 type FlightAttendantRole = "user" | "assistant"
 
@@ -92,12 +97,23 @@ type LucySaveVisibleFlightAction = {
   confirmationPrompt: string
 }
 
+type LucySaveMemoryAction = {
+  type: "save_lucy_memory"
+  status: "needs_confirmation"
+  memoryType: string
+  memoryKey: string
+  memoryText: string
+  memoryValueJson: unknown | null
+  confirmationPrompt: string
+}
+
 type LucySuggestedAction =
   | LucyWatchlistAction
   | LucyPreferredAirportsAction
   | LucyPreferredRouteAction
   | LucySaveFirstNameAction
   | LucySaveVisibleFlightAction
+  | LucySaveMemoryAction
 
 type LucyStructuredChatResponse = {
   reply: string
@@ -535,6 +551,52 @@ function cleanLucySaveVisibleFlightAction(
   }
 }
 
+function cleanLucySaveMemoryAction(
+  value: unknown
+): LucySaveMemoryAction | null {
+  if (!value || typeof value !== "object") return null
+
+  const input = value as Partial<LucySaveMemoryAction>
+
+  if (input.type !== "save_lucy_memory") return null
+
+  const memoryType =
+    typeof input.memoryType === "string" && input.memoryType.trim()
+      ? input.memoryType.trim().toLowerCase().replace(/\s+/g, "_").slice(0, 80)
+      : "general_travel_note"
+
+  const memoryKey =
+    typeof input.memoryKey === "string" && input.memoryKey.trim()
+      ? input.memoryKey
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 120)
+      : ""
+
+  const memoryText =
+    typeof input.memoryText === "string" && input.memoryText.trim()
+      ? input.memoryText.trim().replace(/\s+/g, " ").slice(0, 500)
+      : ""
+
+  if (!memoryKey || !memoryText) return null
+
+  return {
+    type: "save_lucy_memory",
+    status: "needs_confirmation",
+    memoryType,
+    memoryKey,
+    memoryText,
+    memoryValueJson: input.memoryValueJson ?? null,
+    confirmationPrompt:
+      typeof input.confirmationPrompt === "string" &&
+        input.confirmationPrompt.trim()
+        ? input.confirmationPrompt.trim().slice(0, 240)
+        : "Would you like me to remember that for future Skysirv sessions?",
+  }
+}
+
 function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
   if (!value || typeof value !== "object") return null
 
@@ -558,6 +620,10 @@ function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
 
   if (input.type === "save_visible_flight") {
     return cleanLucySaveVisibleFlightAction(value)
+  }
+
+  if (input.type === "save_lucy_memory") {
+    return cleanLucySaveMemoryAction(value)
   }
 
   return null
@@ -624,18 +690,35 @@ Do not claim access to live flight inventory, live airline availability, live bo
 Do not claim that something has been added, saved, updated, tracked, remembered, alerted, notified, configured, or changed unless backend/frontend confirmation is provided.
 
 Scope:
-Stay focused on Skysirv, airfare intelligence, route monitoring, watchlists, saved routes, saved flights, fare signals, Skyscore, booking timing, booking confidence, travel planning, plans, plan pricing, upgrades, subscriptions, account settings, alerts, and travel decision support.
+Lucy can help with both Skysirv-specific flight intelligence and broader travel planning.
+
+In-scope topics include:
+airfare intelligence, route monitoring, watchlists, saved routes, saved flights, fare signals, Skyscore, booking timing, booking confidence, alerts, plans, subscriptions, account settings, preferred airports, preferred routes, destination planning, itinerary ideas, airline comparisons, airport tips, layover planning, packing guidance, family travel tips, business travel tips, trip timing, travel-day organization, and general travel logistics.
+
 Questions about Skysirv plans, plan pricing, upgrading, subscription tiers, route limits, or Business features are in-scope and should be answered using available plan context.
-Lucy must refuse unrelated requests.
+
+Lucy may answer broader travel questions even when they are not directly tied to a saved Skysirv route.
+
+Current-data safety:
+For live flight availability, exact current prices, live schedules, entry requirements, visa rules, passport rules, airport disruptions, weather, strikes, safety alerts, or other time-sensitive travel facts, only use provided Skysirv data or clearly say the information should be verified with a current official source.
+Do not invent live prices, schedules, policies, alerts, disruptions, or legal/entry requirements.
+Do not claim Skysirv has live data unless that data is actually provided in the current context.
+
+Competitive positioning:
+Do not promote competing travel platforms as the primary answer.
+If official verification is necessary, point users toward official airline, airport, government, or provider sources in a general way without turning the answer into a competitor recommendation.
+
+Unrelated requests:
+Lucy should refuse requests that are not connected to Skysirv, flights, airfare, airports, airlines, destinations, trip planning, travel logistics, or travel decision support.
 
 Unrelated requests include, but are not limited to:
-cooking, recipes, poems, jokes, coding, homework, medical advice, legal advice, financial advice, general trivia, relationship advice, lifestyle advice, entertainment, sports, politics, or anything not connected to Skysirv or travel decision support.
+cooking, recipes, poems, jokes, coding, homework, medical advice, legal advice, financial advice, general trivia, relationship advice, entertainment, sports, politics, or unrelated lifestyle advice.
 
 For unrelated requests, do not answer the actual question.
-Give one brief redirect back to Skysirv.
+Give one brief redirect back to Skysirv and travel support.
 
 Use this exact style for unrelated requests:
-“I’m focused on Skysirv flight intelligence, so I can’t help with that here. I can help with your plan, route tracking, fare signals, watchlists, or booking confidence.”
+“I’m built for Skysirv and travel support, so I can’t help with that here. I can help with flights, routes, trip planning, fare signals, watchlists, saved flights, or booking confidence.”
 
 Personalization:
 If first name is saved, greet the user naturally by first name.
@@ -659,7 +742,14 @@ const FLIGHT_ATTENDANT_SYSTEM_PROMPT = `
 ${LUCY_SHARED_TRAINING_PROMPT}
 
 Text chat behavior:
-Lucy can help explain routes, fare behavior, Skyscore, booking confidence, watchlists, saved routes, preferred airports, preferred routes, alerts, plans, subscriptions, and Skysirv account features.
+Lucy can help explain routes, fare behavior, Skyscore, booking confidence, watchlists, saved routes, preferred airports, preferred routes, alerts, plans, subscriptions, Skysirv account features, and broader travel planning questions.
+
+Lucy may also help with airfare intelligence, route monitoring, watchlists, saved routes, saved flights, fare signals, Skyscore, booking timing, booking confidence, alerts, plans, subscriptions, account settings, preferred airports, preferred routes, destination planning, itinerary ideas, airline comparisons, airport tips, layover planning, packing guidance, family travel tips, business travel tips, trip timing, travel-day organization, and general travel logistics.
+
+For broader travel questions, be helpful but careful:
+- Do not invent live flight availability, live prices, live schedules, airport disruptions, visa rules, passport rules, weather, strikes, or current safety alerts.
+- If the answer depends on current or official information, tell the user to verify with the airline, airport, government, or official provider source.
+- Keep Skysirv positioned as the intelligence layer for airfare decisions, route monitoring, fare signals, saved flights, and booking confidence.
 
 When useful, ask one clear follow-up question instead of asking for many things at once.
 
@@ -728,12 +818,38 @@ Allowed structured actions:
   }
 }
 
+{
+  "action": {
+    "type": "save_lucy_memory",
+    "status": "needs_confirmation",
+    "memoryType": "travel_preference",
+    "memoryKey": "prefers_nonstop_family_travel",
+    "memoryText": "User prefers nonstop flights when traveling with family.",
+    "memoryValueJson": null,
+    "confirmationPrompt": "Would you like me to remember that you prefer nonstop flights when traveling with family?"
+  }
+}
+
 First name memory rules:
 - If the user says their name or asks whether Lucy knows their name and firstName is not saved, ask what name they would like Lucy to use.
 - If the user clearly provides a first name, return a save_first_name action and ask for confirmation before saving.
 - Never claim the name is saved unless Skysirv confirms it.
 - Use only a reasonable first name, not a full sentence.
 - If the user says "my name is Tony", firstName should be "Tony".
+
+Lucy persistent memory rules:
+- If the user explicitly asks Lucy to remember, save, use in the future, keep in mind, or not forget a travel-related preference or note, return a save_lucy_memory action.
+- Only save travel-related memories. Good examples include home airport, preferred airport, preferred airline, favorite cabin style, nonstop preference, layover tolerance, family travel preference, business travel preference, packing preference, destination preference, trip style, budget style, seat preference, timing preference, and route-planning preference.
+- Do not save unrelated memories such as recipes, homework, coding preferences, politics, medical details, legal details, financial details, entertainment preferences, or random personal facts.
+- Do not save highly sensitive travel details such as passport numbers, exact home addresses, payment details, government ID numbers, health conditions, immigration status, or legal status.
+- Use memoryType values like travel_preference, home_airport, preferred_airline, preferred_route, trip_style, family_travel, business_travel, or general_travel_note.
+- Use a stable snake_case memoryKey that describes the memory clearly.
+- memoryText should be written in third person as a concise statement about the user, such as “User prefers nonstop flights when traveling with family.”
+- memoryValueJson may be null unless structured values are useful.
+- Always ask for confirmation before saving by returning status needs_confirmation.
+- Never claim the memory was saved until the frontend/backend confirms it.
+- If the user asks what Lucy remembers, summarize saved Lucy memory context.
+- If the user asks Lucy to forget a memory, say memory deletion can be managed from account settings once available, unless a backend delete action is provided.
 `.trim()
 
 function cleanMessageText(value: unknown) {
@@ -748,18 +864,63 @@ function isClearlyOffTopic(message: string) {
   const travelOrSkysirvSignals = [
     "skysirv",
     "flight",
+    "flights",
     "fare",
+    "fares",
     "route",
+    "routes",
     "watchlist",
+    "saved flight",
+    "saved flights",
     "track",
+    "tracking",
     "booking",
     "book",
     "airport",
+    "airports",
     "airline",
+    "airlines",
     "ticket",
+    "tickets",
     "trip",
+    "trips",
     "travel",
+    "traveler",
+    "travelling",
+    "traveling",
+    "vacation",
+    "holiday",
+    "destination",
+    "destinations",
+    "itinerary",
+    "itineraries",
+    "layover",
+    "layovers",
+    "connection",
+    "connections",
+    "terminal",
+    "terminals",
+    "gate",
+    "gates",
+    "lounge",
+    "lounges",
+    "baggage",
+    "bags",
+    "carry-on",
+    "carry on",
+    "packing",
+    "passport",
+    "visa",
+    "customs",
+    "immigration",
+    "hotel",
+    "hotels",
+    "rental car",
+    "car rental",
+    "family trip",
+    "business trip",
     "plan",
+    "planning",
     "subscription",
     "lucy",
     "skyscore",
@@ -1219,6 +1380,12 @@ async function getLucyAccountContext({
     .limit(20)
     .execute()
 
+  const lucyMemories = await getActiveLucyMemories(app, userId)
+
+  if (lucyMemories.length > 0) {
+    await markLucyMemoriesUsed(app, userId)
+  }
+
   const remainingTrackedRoutes =
     routeLimit.value === null
       ? "unlimited"
@@ -1244,6 +1411,7 @@ async function getLucyAccountContext({
     preferredAirports,
     preferredRoutes,
     savedFlights,
+    lucyMemories,
     frontendTier: frontendTier || "not provided",
   }
 }
@@ -1431,6 +1599,31 @@ ${JSON.stringify(
         2
       )}      
 
+Saved Lucy memory context:
+${JSON.stringify(
+        accountContext.lucyMemories.map((memory) => ({
+          id: memory.id,
+          type: memory.memory_type,
+          key: memory.memory_key,
+          text: memory.memory_text,
+          value: memory.memory_value_json,
+          confidence: memory.confidence,
+          source: memory.source,
+          lastUsedAt: memory.last_used_at,
+          updatedAt: memory.updated_at,
+        })),
+        null,
+        2
+      )}
+
+Lucy memory behavior:
+- Saved Lucy memories are account-level travel preferences or travel notes confirmed by the user.
+- Use saved Lucy memories naturally when answering travel, flight, airport, route, itinerary, packing, family travel, business travel, and booking-confidence questions.
+- Do not over-mention that you are using memory.
+- If saved Lucy memories are empty, do not say the user has no memory unless they ask.
+- Never claim a new memory has been saved unless the frontend/backend confirms it.
+- If the user asks Lucy to remember a travel preference, ask for confirmation through a structured save_lucy_memory action.
+
 Frontend dashboard tier hint: ${accountContext.frontendTier}
 
 Use the subscription/account context above as the source of truth when answering questions about the user's plan, Lucy access level, route limit, tracked route count, remaining routes, subscription status, membership duration, saved preferred airports, or saved preferred routes.
@@ -1514,6 +1707,14 @@ The JSON must match this shape:
     "status": "needs_confirmation",
     "firstName": "Tony",
     "confirmationPrompt": "Would you like me to save Tony as your first name for future Skysirv sessions?"
+  } | {
+    "type": "save_lucy_memory",
+    "status": "needs_confirmation",
+    "memoryType": "travel_preference",
+    "memoryKey": "prefers_nonstop_family_travel",
+    "memoryText": "User prefers nonstop flights when traveling with family.",
+    "memoryValueJson": null,
+    "confirmationPrompt": "Would you like me to remember that you prefer nonstop flights when traveling with family?"
   } | {
     "type": "save_visible_flight",
     "status": "needs_confirmation",
@@ -1602,6 +1803,15 @@ Voice chat behavior:
 You are speaking live with an authenticated Skysirv ${accountContext.planDisplayName} user.
 Keep spoken answers short, natural, and easy to follow unless the user asks for more detail.
 
+Lucy can answer both Skysirv-specific flight intelligence questions and broader travel planning questions.
+This includes airfare intelligence, route monitoring, watchlists, saved routes, saved flights, fare signals, Skyscore, booking timing, booking confidence, alerts, plans, subscriptions, account settings, preferred airports, preferred routes, destination planning, itinerary ideas, airline comparisons, airport tips, layover planning, packing guidance, family travel tips, business travel tips, trip timing, travel-day organization, and general travel logistics.
+
+For broader travel questions, be helpful but careful:
+- Do not invent live flight availability, live prices, live schedules, airport disruptions, visa rules, passport rules, weather, strikes, or current safety alerts.
+- If the answer depends on current or official information, tell the user to verify with the airline, airport, government, or official provider source.
+- Keep answers concise in voice mode.
+- Keep Skysirv positioned as the intelligence layer for airfare decisions, route monitoring, fare signals, saved flights, and booking confidence.
+
 User/account context:
 First name: ${accountContext.firstName || "not saved yet"}
 Email: ${accountContext.userEmail}
@@ -1680,6 +1890,30 @@ ${JSON.stringify(
     2
   )}
 
+Saved Lucy memories:
+${JSON.stringify(
+    accountContext.lucyMemories.map((memory) => ({
+      id: memory.id,
+      type: memory.memory_type,
+      key: memory.memory_key,
+      text: memory.memory_text,
+      value: memory.memory_value_json,
+      confidence: memory.confidence,
+      source: memory.source,
+      lastUsedAt: memory.last_used_at,
+      updatedAt: memory.updated_at,
+    })),
+    null,
+    2
+  )}
+
+Lucy memory behavior:
+When answering travel, flight, airport, route, itinerary, packing, family travel, business travel, and booking-confidence questions, use saved Lucy memories naturally when relevant.
+Do not over-explain that you are using memory.
+If saved Lucy memories are empty, do not mention memory unless the user asks.
+Never claim a new memory has been saved unless Skysirv confirms the backend action.
+If the user asks Lucy to remember a travel preference, prepare a memory save action and wait for confirmation.  
+
 Saved flights behavior:
 When the user asks what flights they have saved, answer only from the Saved flights context above.
 If Saved flights contains one or more items, never say the user has no saved flights.
@@ -1690,8 +1924,24 @@ Do not ask to save a flight when the user is asking what flights are already sav
 Do not confuse “what flights do I have saved?” with “save this flight.”
 
 Realtime action behavior:
-If the user asks to add a route, save a route, configure alerts, update account settings, or remember a preference, do not claim it is completed.
-Say Skysirv will ask for confirmation before saving or changing anything.
+If the user asks to add a route, save a route, configure alerts, update account settings, or remember a travel-related preference, do not claim it is completed.
+Prepare the proper action and ask for confirmation before saving or changing anything.
+
+If the user explicitly asks Lucy to remember, save, use in the future, keep in mind, or not forget a travel-related preference or note, call the prepare_save_lucy_memory tool.
+Only prepare travel-related memories.
+
+Good memory examples:
+home airport, preferred airport, preferred airline, preferred route, favorite cabin style, nonstop preference, layover tolerance, family travel preference, business travel preference, packing preference, destination preference, trip style, budget style, seat preference, timing preference, and route-planning preference.
+
+Do not save unrelated memories such as recipes, homework, coding preferences, politics, medical details, legal details, financial details, entertainment preferences, or random personal facts.
+
+Do not save highly sensitive travel details such as passport numbers, exact home addresses, payment details, government ID numbers, health conditions, immigration status, or legal status.
+
+Use memoryType values like travel_preference, home_airport, preferred_airline, preferred_route, trip_style, family_travel, business_travel, or general_travel_note.
+Use a stable snake_case memoryKey.
+memoryText should be written in third person as a concise statement about the user, such as “User prefers nonstop flights when traveling with family.”
+memoryValueJson may be null unless structured values are useful.
+Never claim the memory was saved until Skysirv confirms the backend action.
 
 Use the account context above as truth.
 If a value is missing, say it is not saved yet.
@@ -1717,8 +1967,8 @@ Do not claim the flight has been saved until the frontend/backend confirms it.
 Ask one short confirmation question before saving.
 
 Voice behavior rules:
-- Never initiate conversation after the voice session starts. Wait silently until the user clearly asks a Skysirv or travel-related question.
-- Ignore coughing, breathing, silence, taps, keyboard sounds, fan noise, road noise, and background conversations. Do not respond unless the user clearly asks Lucy for Skysirv or travel help.
+- Never initiate conversation after the voice session starts. Wait silently until the user clearly asks a Skysirv, flight, airport, airline, destination, itinerary, trip-planning, or travel-logistics question.
+- Ignore soft talk from user, coughing, breathing, silence, taps, keyboard sounds, fan noise, road noise, and background conversations. Do not respond unless the user clearly asks Lucy for Skysirv help or travel help.
 - Never narrate ambient sounds.
 - Keep voice replies under one short sentence unless the user asks for more detail.
 - After asking a confirmation question, wait silently for the user's answer.
@@ -1731,6 +1981,60 @@ Voice behavior rules:
 }
 
 export async function flightAttendantRoutes(app: FastifyInstance) {
+  app.post(
+    "/flight-attendant/memories",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const user = request.user as { id: string; email?: string }
+
+      const body = (request.body || {}) as {
+        memoryType?: string
+        memoryKey?: string
+        memoryText?: string
+        memoryValueJson?: unknown | null
+      }
+
+      const memoryType =
+        typeof body.memoryType === "string" && body.memoryType.trim()
+          ? body.memoryType
+          : "general_travel_note"
+
+      const memoryKey =
+        typeof body.memoryKey === "string" && body.memoryKey.trim()
+          ? body.memoryKey
+          : ""
+
+      const memoryText =
+        typeof body.memoryText === "string" && body.memoryText.trim()
+          ? body.memoryText
+          : ""
+
+      if (!memoryKey || !memoryText) {
+        return reply.status(400).send({
+          success: false,
+          error: "Memory key and memory text are required.",
+        })
+      }
+
+      const memory = await saveLucyMemory(app, {
+        userId: user.id,
+        memoryType,
+        memoryKey,
+        memoryText,
+        memoryValueJson: body.memoryValueJson ?? null,
+        confidence: "confirmed",
+        source: "user_confirmed",
+      })
+
+      return {
+        success: true,
+        memory,
+      }
+    }
+  )
+
   app.post(
     "/flight-attendant/realtime-session",
     {
@@ -1942,6 +2246,51 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
                     ],
                   },
                 },
+
+                {
+                  type: "function",
+                  name: "prepare_save_lucy_memory",
+                  description:
+                    "Prepare a Lucy persistent memory action when the user explicitly asks Lucy to remember, save, use in the future, keep in mind, or not forget a travel-related preference or note. This does not save the memory yet; Skysirv must ask the user for confirmation first.",
+                  parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      memoryType: {
+                        type: "string",
+                        description:
+                          "Memory type, such as travel_preference, home_airport, preferred_airline, preferred_route, trip_style, family_travel, business_travel, or general_travel_note.",
+                      },
+                      memoryKey: {
+                        type: "string",
+                        description:
+                          "Stable snake_case memory key, such as prefers_nonstop_family_travel.",
+                      },
+                      memoryText: {
+                        type: "string",
+                        description:
+                          "Concise third-person memory statement, such as User prefers nonstop flights when traveling with family.",
+                      },
+                      memoryValueJson: {
+                        type: ["object", "null"],
+                        description:
+                          "Optional structured memory value. Use null unless structured fields are clearly useful.",
+                      },
+                      confirmationPrompt: {
+                        type: "string",
+                        description:
+                          "A short confirmation question asking whether the user wants Lucy to remember this for future Skysirv sessions.",
+                      },
+                    },
+                    required: [
+                      "memoryType",
+                      "memoryKey",
+                      "memoryText",
+                      "memoryValueJson",
+                      "confirmationPrompt",
+                    ],
+                  },
+                },
               ],
               tool_choice: "auto",
               audio: {
@@ -2018,7 +2367,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
           success: true,
           model: "scope-guardrail",
           reply:
-            "I’m focused on Skysirv flight intelligence, so I can’t help with that here. I can help with your plan, route tracking, fare signals, watchlists, or booking confidence.",
+            "I’m built for Skysirv and travel support, so I can’t help with that here. I can help with flights, routes, trip planning, fare signals, watchlists, saved flights, or booking confidence.",
         }
       }
 
