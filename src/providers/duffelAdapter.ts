@@ -1,4 +1,5 @@
 import { Duffel } from "@duffel/api"
+import { env } from "../config/env.js"
 import {
   FlightProvider,
   FlightSearchParams,
@@ -46,14 +47,8 @@ export class DuffelAdapter implements FlightProvider {
   private client: Duffel
 
   constructor() {
-    const apiKey = process.env.DUFFEL_API_KEY
-
-    if (!apiKey) {
-      throw new Error("Missing DUFFEL_API_KEY in environment variables")
-    }
-
     this.client = new Duffel({
-      token: apiKey,
+      token: env.DUFFEL_ACCESS_TOKEN,
     })
   }
 

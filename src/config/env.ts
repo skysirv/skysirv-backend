@@ -43,7 +43,7 @@ const envSchema = z
 
     MAPBOX_ACCESS_TOKEN: z.string().min(1),
 
-    DUFFEL_ACCESS_TOKEN: z.string().optional(),
+    DUFFEL_ACCESS_TOKEN: z.string().min(1),
     DUFFEL_API_BASE_URL: z.string().url().default("https://api.duffel.com"),
     DUFFEL_API_VERSION: z.string().default("v2"),
 
