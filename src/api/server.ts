@@ -22,6 +22,7 @@ import { subscriptionRoutes } from "../routes/subscriptions.js"
 import { googleAuthRoutes } from "../auth/googleRoutes.js"
 import { betaRoutes } from "../routes/beta.js"
 import { savedFlightsRoutes } from "../routes/saved-flights.js"
+import { skysirvLiveRoutes } from "../routes/skysirv-live.js"
 import { userPreferencesRoutes } from "../routes/user-preferences.js"
 import { flightAttendantRoutes } from "../routes/flightAttendant.js"
 import { bookingRoutes } from "../routes/booking.js"
@@ -113,6 +114,7 @@ export function buildServer() {
   app.register(inviteRoutes, { prefix: "/api" })
   app.register(subscriptionRoutes, { prefix: "/api" })
   app.register(betaRoutes, { prefix: "/api" })
+  app.register(skysirvLiveRoutes, { prefix: "/api" })
   app.register(savedFlightsRoutes)
   app.register(bookingRoutes)
   app.register(userPreferencesRoutes, { prefix: "/api" })

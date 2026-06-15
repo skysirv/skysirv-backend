@@ -47,6 +47,25 @@ const envSchema = z
     DUFFEL_API_BASE_URL: z.string().url().default("https://api.duffel.com"),
     DUFFEL_API_VERSION: z.string().default("v2"),
 
+    CIRIUM_ENABLED: envBoolean,
+    CIRIUM_API_MODE: z.enum(["flightstats", "sky"]).default("sky"),
+    CIRIUM_APP_ID: z.string().optional(),
+    CIRIUM_APP_KEY: z.string().optional(),
+    CIRIUM_DELAY_INDEX_BASE_URL: z
+      .string()
+      .url()
+      .default("https://api.flightstats.com/flex/delayindex/rest/v1/json"),
+    CIRIUM_SKY_IDENTIFIER: z.string().optional(),
+    CIRIUM_SKY_SECRET: z.string().optional(),
+    CIRIUM_SKY_BASE_URL: z.string().url().optional(),
+
+    FLIGHTAWARE_ENABLED: envBoolean,
+    FLIGHTAWARE_API_KEY: z.string().optional(),
+    FLIGHTAWARE_AEROAPI_BASE_URL: z
+      .string()
+      .url()
+      .default("https://aeroapi.flightaware.com/aeroapi"),
+
     SMS_PROVIDER: z.enum(["disabled", "twilio"]).default("disabled"),
     SMS_ALERTS_ENABLED: envBoolean,
 
@@ -87,6 +106,63 @@ const envSchema = z
           })
         }
       }
+    }
+
+    if (env.CIRIUM_ENABLED && env.CIRIUM_API_MODE === "flightstats") {
+      if (!env.CIRIUM_APP_ID) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["CIRIUM_APP_ID"],
+          message:
+            "CIRIUM_APP_ID is required when CIRIUM_ENABLED is true and CIRIUM_API_MODE is flightstats",
+        })
+      }
+
+      if (!env.CIRIUM_APP_KEY) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["CIRIUM_APP_KEY"],
+          message:
+            "CIRIUM_APP_KEY is required when CIRIUM_ENABLED is true and CIRIUM_API_MODE is flightstats",
+        })
+      }
+    }
+
+    if (env.CIRIUM_ENABLED && env.CIRIUM_API_MODE === "sky") {
+      if (!env.CIRIUM_SKY_IDENTIFIER) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["CIRIUM_SKY_IDENTIFIER"],
+          message:
+            "CIRIUM_SKY_IDENTIFIER is required when CIRIUM_ENABLED is true and CIRIUM_API_MODE is sky",
+        })
+      }
+
+      if (!env.CIRIUM_SKY_SECRET) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["CIRIUM_SKY_SECRET"],
+          message:
+            "CIRIUM_SKY_SECRET is required when CIRIUM_ENABLED is true and CIRIUM_API_MODE is sky",
+        })
+      }
+
+      if (!env.CIRIUM_SKY_BASE_URL) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["CIRIUM_SKY_BASE_URL"],
+          message:
+            "CIRIUM_SKY_BASE_URL is required when CIRIUM_ENABLED is true and CIRIUM_API_MODE is sky",
+        })
+      }
+    }
+
+    if (env.FLIGHTAWARE_ENABLED && !env.FLIGHTAWARE_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["FLIGHTAWARE_API_KEY"],
+        message: "FLIGHTAWARE_API_KEY is required when FLIGHTAWARE_ENABLED is true",
+      })
     }
 
     if (!env.SMS_ALERTS_ENABLED) return
