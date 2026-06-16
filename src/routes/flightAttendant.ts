@@ -1,4 +1,7 @@
-import { FastifyInstance } from "fastify"
+import { FastifyInstance, FastifyRequest } from "fastify"
+import crypto from "node:crypto"
+import { Redis } from "ioredis"
+import { env } from "../config/env.js"
 import {
   getOpenAIChatModel,
   getOpenAIIntelligenceModel,
@@ -46,6 +49,12 @@ type FlightAttendantChatBody = {
   messages?: FlightAttendantIncomingMessage[]
   tier?: "free" | "pro" | "business"
   dashboardRoutes?: FlightAttendantDashboardRouteContext[]
+}
+
+type FlightAttendantPublicChatBody = {
+  message?: string
+  messages?: FlightAttendantIncomingMessage[]
+  surface?: "homepage_public"
 }
 
 type LucyWatchlistAction = {
@@ -122,6 +131,22 @@ type LucyStructuredChatResponse = {
 
 const MAX_CONVERSATION_MESSAGES = 20
 const MAX_MESSAGE_LENGTH = 2500
+const PUBLIC_LUCY_DAILY_MESSAGE_LIMIT = 5
+const PUBLIC_LUCY_LIMIT_WINDOW_SECONDS = 24 * 60 * 60
+const PUBLIC_LUCY_LIMIT_WINDOW_MS = PUBLIC_LUCY_LIMIT_WINDOW_SECONDS * 1000
+
+const PUBLIC_LUCY_LIMIT_REACHED_REPLY =
+  "I’d love to keep helping, but public previews are limited for now. Create a free Skysirv account or sign in to continue with the right level of travel support."
+
+let publicLucyRedis: Redis | null = null
+
+const publicLucyLocalLimits = new Map<
+  string,
+  {
+    count: number
+    expiresAt: number
+  }
+>()
 
 type LucyDashboardSummary = {
   headline: string
@@ -679,7 +704,9 @@ Help travelers understand airfare timing, route behavior, fare movement, booking
 
 Tone:
 Calm, warm, cozy, coy, spoony, polished, confident, concise, premium, and conversational.
-Sound like Lucy, Skysirv’s premium in-product flight intelligence concierge.
+Sound like a real Skysirv flight attendant and premium travel concierge.
+Use “I” when describing what you can help with.
+Avoid referring to yourself as “Lucy” in user-facing replies unless the user directly asks who you are.
 Do not sound like a generic chatbot.
 Do not end replies with vague assistant phrases like “If you want...” or “Let me know...”
 When offering a next step, make it specific, Skysirv-native, and useful.
@@ -709,7 +736,7 @@ Do not promote competing travel platforms as the primary answer.
 If official verification is necessary, point users toward official airline, airport, government, or provider sources in a general way without turning the answer into a competitor recommendation.
 
 Unrelated requests:
-Lucy should refuse requests that are not connected to Skysirv, flights, airfare, airports, airlines, destinations, trip planning, travel logistics, or travel decision support.
+For requests that are not connected to Skysirv, flights, airfare, airports, airlines, destinations, trip planning, travel logistics, or travel decision support, respond softly and redirect back to travel support.
 
 Unrelated requests include, but are not limited to:
 cooking, recipes, poems, jokes, coding, homework, medical advice, legal advice, financial advice, general trivia, relationship advice, entertainment, sports, politics, or unrelated lifestyle advice.
@@ -717,8 +744,12 @@ cooking, recipes, poems, jokes, coding, homework, medical advice, legal advice, 
 For unrelated requests, do not answer the actual question.
 Give one brief redirect back to Skysirv and travel support.
 
+For unrelated requests, do not answer the actual question.
+Give one brief, warm redirect back to Skysirv and travel support.
+Speak in first person. Do not refer to yourself as “Lucy” in user-facing replies unless the user directly asks who you are.
+
 Use this exact style for unrelated requests:
-“I’m built for Skysirv and travel support, so I can’t help with that here. I can help with flights, routes, trip planning, fare signals, watchlists, saved flights, or booking confidence.”
+“I’m here for Skysirv and travel support, so I can’t help with that one here. I can help with flights, routes, trip planning, fare signals, watchlists, saved flights, or booking confidence.”
 
 Personalization:
 If first name is saved, greet the user naturally by first name.
@@ -851,6 +882,207 @@ Lucy persistent memory rules:
 - If the user asks what Lucy remembers, summarize saved Lucy memory context.
 - If the user asks Lucy to forget a memory, say memory deletion can be managed from account settings once available, unless a backend delete action is provided.
 `.trim()
+
+const PUBLIC_HOMEPAGE_LUCY_SYSTEM_PROMPT = `
+${LUCY_SHARED_TRAINING_PROMPT}
+
+Public homepage Lucy behavior:
+You are speaking with a public Skysirv homepage visitor.
+
+This visitor is not authenticated unless explicit account context is provided, and this public endpoint does not receive account context.
+
+Lucy may help with:
+- Skysirv product questions
+- Flights
+- Airlines
+- Airports
+- Layovers
+- Booking timing
+- Hotels
+- Car rentals
+- Cruises
+- Itinerary planning
+- General trip strategy
+- Public plan explanations
+- Explaining what Skysirv and Lucy can do
+
+Lucy should be generous and helpful with normal travel questions.
+Do not refuse travel questions just because they are not tied to a saved Skysirv route.
+
+Public access blockers:
+- Do not claim access to saved flights.
+- Do not claim access to watched routes.
+- Do not claim access to route history.
+- Do not claim access to dashboard intelligence.
+- Do not claim access to Lucy memory.
+- Do not claim access to alerts.
+- Do not claim access to account settings.
+- Do not claim a route was tracked, saved, updated, or remembered.
+- Do not return structured actions.
+- Do not ask for backend confirmation actions.
+- Do not say you can personally complete account-only actions from the public homepage.
+- When explaining account-only actions, speak in first person. Say “I can help once you sign in,” not “Lucy can help once you sign in.”
+
+When the visitor asks for account-only actions:
+- Explain naturally that signing in or creating an account connects that action to their Skysirv dashboard.
+- Keep the tone warm and concierge-like.
+- Do not sound blocked or robotic.
+
+Examples:
+User asks to save a flight:
+“I can help you get there. Saving flights lives inside your Skysirv account so they stay connected to your dashboard. Create an account or sign in, and then I can help keep it organized properly.”
+
+User asks Lucy to remember a preference:
+“I can use that for this conversation. To remember it for future trips, you’ll want to sign in so your travel preferences can stay connected to your Skysirv account.”
+
+Current-data safety:
+- Do not invent live prices, live availability, live schedules, live airport disruptions, weather, strikes, visa rules, passport rules, or entry requirements.
+- For current or official information, say it should be verified with the airline, airport, government, or official provider source.
+- You may still give general travel strategy and comparison advice.
+
+Homepage style:
+Sound like a polished Skysirv flight attendant and travel concierge.
+Be warm, direct, helpful, human, and lightly charming.
+Speak in first person. Say “I can help,” not “Lucy can help.”
+Use short paragraphs.
+Keep most homepage replies between 80 and 160 words unless the user asks for detail.
+Use bullets only when they make the answer easier to scan.
+If using bullets, keep them short and do not over-nest them.
+Ask one useful follow-up question when needed.
+
+Avoid vague closing phrases like:
+- “If you want...”
+- “Let me know...”
+- “Feel free to ask...”
+
+Use more specific endings instead, such as:
+- “Tell me your departure airport and I’ll narrow it down.”
+- “Share your dates and I’ll help you judge the route.”
+- “Give me your budget range and I’ll shape the search.”
+
+Current-data caution for airline recommendations:
+When discussing airlines, routes, nonstops, schedules, fares, or airport options without live Skysirv search data, speak generally.
+Do not imply a specific nonstop, airline schedule, fare, or availability exists unless provided by Skysirv context.
+Use wording like “I’d check,” “worth comparing,” or “if available for your dates.”
+Do not say an airline has a nonstop or near-nonstop option unless that schedule is provided.
+
+Do not use markdown headings.
+Do not return JSON.
+Return plain conversational text only.
+`.trim()
+
+function getPublicLucyRedis() {
+  if (!publicLucyRedis) {
+    publicLucyRedis = new Redis(env.REDIS_URL, {
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
+    })
+  }
+
+  return publicLucyRedis
+}
+
+function getHeaderString(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0] || ""
+  }
+
+  return value || ""
+}
+
+function getPublicLucyVisitorFingerprint(request: FastifyRequest) {
+  const forwardedFor = getHeaderString(request.headers["x-forwarded-for"])
+  const realIp = getHeaderString(request.headers["x-real-ip"])
+  const cfIp = getHeaderString(request.headers["cf-connecting-ip"])
+  const userAgent = getHeaderString(request.headers["user-agent"])
+
+  const ip =
+    forwardedFor.split(",")[0]?.trim() ||
+    cfIp.trim() ||
+    realIp.trim() ||
+    request.ip ||
+    "unknown"
+
+  return crypto
+    .createHash("sha256")
+    .update(`${ip}|${userAgent}`)
+    .digest("hex")
+    .slice(0, 40)
+}
+
+function checkPublicLucyLocalDailyLimit(request: FastifyRequest) {
+  const visitorFingerprint = getPublicLucyVisitorFingerprint(request)
+  const now = Date.now()
+  const existing = publicLucyLocalLimits.get(visitorFingerprint)
+
+  if (!existing || existing.expiresAt <= now) {
+    const expiresAt = now + PUBLIC_LUCY_LIMIT_WINDOW_MS
+
+    publicLucyLocalLimits.set(visitorFingerprint, {
+      count: 1,
+      expiresAt,
+    })
+
+    return {
+      allowed: true,
+      count: 1,
+      remaining: PUBLIC_LUCY_DAILY_MESSAGE_LIMIT - 1,
+      resetSeconds: Math.ceil((expiresAt - now) / 1000),
+    }
+  }
+
+  const nextCount = existing.count + 1
+
+  publicLucyLocalLimits.set(visitorFingerprint, {
+    ...existing,
+    count: nextCount,
+  })
+
+  return {
+    allowed: nextCount <= PUBLIC_LUCY_DAILY_MESSAGE_LIMIT,
+    count: nextCount,
+    remaining: Math.max(PUBLIC_LUCY_DAILY_MESSAGE_LIMIT - nextCount, 0),
+    resetSeconds: Math.ceil((existing.expiresAt - now) / 1000),
+  }
+}
+
+function shouldUsePublicLucyLocalLimit() {
+  const usesRailwayInternalRedis = env.REDIS_URL.includes("redis.railway.internal")
+
+  const runningInsideRailway = Boolean(
+    process.env.RAILWAY_ENVIRONMENT ||
+    process.env.RAILWAY_PROJECT_ID ||
+    process.env.RAILWAY_SERVICE_ID
+  )
+
+  return usesRailwayInternalRedis && !runningInsideRailway
+}
+
+async function checkPublicLucyDailyLimit(request: FastifyRequest) {
+  if (shouldUsePublicLucyLocalLimit()) {
+    return checkPublicLucyLocalDailyLimit(request)
+  }
+
+  const redis = getPublicLucyRedis()
+  const visitorFingerprint = getPublicLucyVisitorFingerprint(request)
+  const key = `skysirv:lucy:public-homepage:${visitorFingerprint}`
+
+  const count = await redis.incr(key)
+
+  if (count === 1) {
+    await redis.expire(key, PUBLIC_LUCY_LIMIT_WINDOW_SECONDS)
+  }
+
+  const ttl = await redis.ttl(key)
+
+  return {
+    allowed: count <= PUBLIC_LUCY_DAILY_MESSAGE_LIMIT,
+    count,
+    remaining: Math.max(PUBLIC_LUCY_DAILY_MESSAGE_LIMIT - count, 0),
+    resetSeconds:
+      ttl > 0 ? ttl : PUBLIC_LUCY_LIMIT_WINDOW_SECONDS,
+  }
+}
 
 function cleanMessageText(value: unknown) {
   if (typeof value !== "string") return ""
@@ -1786,6 +2018,30 @@ The following is the current page-session conversation. Respond to the latest us
   ]
 }
 
+function buildPublicHomepageOpenAIInput({
+  conversation,
+}: {
+  conversation: Array<{
+    role: FlightAttendantRole
+    content: string
+  }>
+}) {
+  return [
+    {
+      role: "system" as const,
+      content: `${PUBLIC_HOMEPAGE_LUCY_SYSTEM_PROMPT}
+
+Current server date: ${new Date().toISOString().slice(0, 10)}
+
+The following is the current public homepage conversation. Respond to the latest user message while respecting the public access blockers.`,
+    },
+    ...conversation.map((message) => ({
+      role: message.role,
+      content: message.content,
+    })),
+  ]
+}
+
 const LUCY_REALTIME_MODEL =
   process.env.OPENAI_REALTIME_MODEL || "gpt-realtime"
 
@@ -2349,6 +2605,81 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
   )
 
   app.post(
+    "/flight-attendant/public-chat",
+    async (request, reply) => {
+      const body = request.body as FlightAttendantPublicChatBody
+
+      const conversation = normalizeConversation(body)
+
+      if (!conversation.length) {
+        return reply.status(400).send({
+          error: "Message is required",
+        })
+      }
+
+      const latestUserMessage =
+        cleanMessageText(body.message) ||
+        [...conversation].reverse().find((message) => message.role === "user")
+          ?.content ||
+        ""
+
+      let publicLucyLimit
+
+      try {
+        publicLucyLimit = await checkPublicLucyDailyLimit(request)
+      } catch (error) {
+        request.log.error(error, "Public Lucy rate limit check failed")
+
+        return reply.status(503).send({
+          success: false,
+          code: "PUBLIC_LUCY_LIMIT_UNAVAILABLE",
+          reply:
+            "I’m having trouble opening the public preview right now. Please try again in a moment, or sign in to continue with your Skysirv account.",
+        })
+      }
+
+      if (!publicLucyLimit.allowed) {
+        return reply.status(429).send({
+          success: false,
+          code: "PUBLIC_LUCY_LIMIT_REACHED",
+          reply: PUBLIC_LUCY_LIMIT_REACHED_REPLY,
+          limit: PUBLIC_LUCY_DAILY_MESSAGE_LIMIT,
+          remaining: 0,
+          resetSeconds: publicLucyLimit.resetSeconds,
+        })
+      }
+
+      if (isClearlyOffTopic(latestUserMessage)) {
+        return {
+          success: true,
+          model: "scope-guardrail",
+          reply:
+            "I’m here for Skysirv and travel support, so I can’t help with that one here. I can help with flights, routes, trip planning, fare signals, watchlists, saved flights, or booking confidence.",
+        }
+      }
+
+      const model = getOpenAIChatModel()
+
+      const response = await openai.responses.create({
+        model,
+        input: buildPublicHomepageOpenAIInput({
+          conversation,
+        }),
+      })
+
+      const replyText =
+        response.output_text.trim().slice(0, 1800) ||
+        "I’m here, but I could not generate a clean response."
+
+      return {
+        success: true,
+        model,
+        reply: replyText,
+      }
+    }
+  )
+
+  app.post(
     "/flight-attendant/chat",
     {
       preHandler: [app.authenticate],
@@ -2376,7 +2707,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
           success: true,
           model: "scope-guardrail",
           reply:
-            "I’m built for Skysirv and travel support, so I can’t help with that here. I can help with flights, routes, trip planning, fare signals, watchlists, saved flights, or booking confidence.",
+            "I’m here for Skysirv and travel support, so I can’t help with that one here. I can help with flights, routes, trip planning, fare signals, watchlists, saved flights, or booking confidence.",
         }
       }
 
