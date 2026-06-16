@@ -1084,6 +1084,53 @@ async function checkPublicLucyDailyLimit(request: FastifyRequest) {
   }
 }
 
+async function getPublicLucyDailyLimitStatus(request: FastifyRequest) {
+  if (shouldUsePublicLucyLocalLimit()) {
+    return getPublicLucyLocalDailyLimitStatus(request)
+  }
+
+  const redis = getPublicLucyRedis()
+  const visitorFingerprint = getPublicLucyVisitorFingerprint(request)
+  const key = `skysirv:lucy:public-homepage:${visitorFingerprint}`
+
+  const [rawCount, ttl] = await Promise.all([
+    redis.get(key),
+    redis.ttl(key),
+  ])
+
+  const count = Number(rawCount || 0)
+
+  return {
+    allowed: count <= PUBLIC_LUCY_DAILY_MESSAGE_LIMIT,
+    count,
+    remaining: Math.max(PUBLIC_LUCY_DAILY_MESSAGE_LIMIT - count, 0),
+    resetSeconds:
+      ttl > 0 ? ttl : 0,
+  }
+}
+
+function getPublicLucyLocalDailyLimitStatus(request: FastifyRequest) {
+  const visitorFingerprint = getPublicLucyVisitorFingerprint(request)
+  const now = Date.now()
+  const existing = publicLucyLocalLimits.get(visitorFingerprint)
+
+  if (!existing || existing.expiresAt <= now) {
+    return {
+      allowed: true,
+      count: 0,
+      remaining: PUBLIC_LUCY_DAILY_MESSAGE_LIMIT,
+      resetSeconds: 0,
+    }
+  }
+
+  return {
+    allowed: existing.count <= PUBLIC_LUCY_DAILY_MESSAGE_LIMIT,
+    count: existing.count,
+    remaining: Math.max(PUBLIC_LUCY_DAILY_MESSAGE_LIMIT - existing.count, 0),
+    resetSeconds: Math.ceil((existing.expiresAt - now) / 1000),
+  }
+}
+
 function cleanMessageText(value: unknown) {
   if (typeof value !== "string") return ""
 
@@ -2600,6 +2647,34 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         voice: LUCY_REALTIME_VOICE,
         plan: accountContext.planDisplayName,
         session: data,
+      }
+    }
+  )
+
+  app.get(
+    "/flight-attendant/public-chat/status",
+    async (request, reply) => {
+      try {
+        const publicLucyLimit = await getPublicLucyDailyLimitStatus(request)
+
+        return {
+          success: true,
+          code: publicLucyLimit.allowed
+            ? "PUBLIC_LUCY_AVAILABLE"
+            : "PUBLIC_LUCY_LIMIT_REACHED",
+          limit: PUBLIC_LUCY_DAILY_MESSAGE_LIMIT,
+          count: publicLucyLimit.count,
+          remaining: publicLucyLimit.remaining,
+          resetSeconds: publicLucyLimit.resetSeconds,
+          reply: publicLucyLimit.allowed ? null : PUBLIC_LUCY_LIMIT_REACHED_REPLY,
+        }
+      } catch (error) {
+        request.log.error(error, "Public Lucy status check failed")
+
+        return reply.status(503).send({
+          success: false,
+          code: "PUBLIC_LUCY_STATUS_UNAVAILABLE",
+        })
       }
     }
   )
