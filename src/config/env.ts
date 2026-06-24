@@ -48,6 +48,7 @@ const envSchema = z
     DUFFEL_API_VERSION: z.string().default("v2"),
 
     CIRIUM_ENABLED: envBoolean,
+    CIRIUM_LIVE_AIRCRAFT_ENABLED: envBoolean,
     CIRIUM_API_MODE: z.enum(["flightstats", "sky"]).default("sky"),
     CIRIUM_APP_ID: z.string().optional(),
     CIRIUM_APP_KEY: z.string().optional(),

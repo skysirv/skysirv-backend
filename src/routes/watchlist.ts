@@ -1,11 +1,9 @@
 import { FastifyInstance } from "fastify"
-import { Queue } from "bullmq"
 
 import { addToWatchlist, getUserWatchlist } from "../db/watchlist.js"
 import { canCreateWatchlist } from "../services/entitlements.js"
 import { db } from "../db/kysely.js"
-import { env } from "../config/env.js"
-import { QUEUE_NAMES } from "../infra/queues.js"
+import { getMonitorQueue, QUEUE_NAMES } from "../infra/queues.js"
 
 function normalizeWatchlistDepartureDateForStorage(value: string) {
   const rawDate = value.trim()
@@ -49,9 +47,7 @@ function normalizeWatchlistDepartureDateForStorage(value: string) {
 }
 
 export async function watchlistRoutes(app: FastifyInstance) {
-  const monitorQueue = new Queue(QUEUE_NAMES.monitor, {
-    connection: { url: env.REDIS_URL },
-  })
+  const monitorQueue = getMonitorQueue()
 
   // Add route to watchlist
   app.post(
