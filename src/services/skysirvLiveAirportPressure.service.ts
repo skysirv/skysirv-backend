@@ -54,10 +54,12 @@ export type SkysirvAirportPressureResult = {
   severity: SkysirvAirportPressureSeverity
   statusLabel: string
   departurePressurePercent: number
-  arrivalPressurePercent: number
+  arrivalPressurePercent: number | null
   cancellationPercent: number
   averageDepartureDelayMinutes: number
-  averageArrivalDelayMinutes: number
+  averageArrivalDelayMinutes: number | null
+  departureDelayActive: boolean
+  arrivalDelayActive: boolean
   primaryReason: string | null
   sourceBreakdown: {
     faaScore: number
@@ -87,8 +89,47 @@ function scoreToSeverity(score: number): SkysirvAirportPressureSeverity {
   return "normal"
 }
 
+function toFiniteNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
 function safeNumber(value: number | null | undefined) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0
+  return toFiniteNumber(value) ?? 0
+}
+
+function clampNullablePercent(value: number | null | undefined) {
+  const finiteValue = toFiniteNumber(value)
+
+  return finiteValue === null ? null : clampPercent(finiteValue)
+}
+
+function roundNullableNumber(value: number | null | undefined) {
+  const finiteValue = toFiniteNumber(value)
+
+  return finiteValue === null ? null : Math.round(finiteValue)
+}
+
+function hasPositiveNumber(value: number | null | undefined) {
+  const finiteValue = toFiniteNumber(value)
+
+  return finiteValue !== null && finiteValue > 0
+}
+
+function hasFaaEventType(
+  faa: SkysirvAirportPressureFaaSignal | null | undefined,
+  eventTypes: string[],
+) {
+  if (!faa?.eventType) return false
+
+  const normalizedEventTypes = faa.eventType
+    .toLowerCase()
+    .split(/[,\s;|]+/)
+    .map((eventType) => eventType.trim())
+    .filter(Boolean)
+
+  return eventTypes.some((eventType) =>
+    normalizedEventTypes.includes(eventType.toLowerCase()),
+  )
 }
 
 function computeFaaScore(faa?: SkysirvAirportPressureFaaSignal | null) {
@@ -247,33 +288,44 @@ export function computeSkysirvAirportPressure(
 
   const severity = scoreToSeverity(pressureScore)
 
-  const departurePressurePercent =
-    input.flightPerformance?.departureDelayPercent !== undefined &&
-      input.flightPerformance.departureDelayPercent !== null
-      ? clampPercent(input.flightPerformance.departureDelayPercent)
-      : clampPercent(safeNumber(input.faa?.departuresDelay))
+  const departurePressurePercent = clampPercent(
+    safeNumber(
+      input.flightPerformance?.departureDelayPercent ??
+      input.faa?.departuresDelay,
+    ),
+  )
 
-  const arrivalPressurePercent =
-    input.flightPerformance?.arrivalDelayPercent !== undefined &&
-      input.flightPerformance.arrivalDelayPercent !== null
-      ? clampPercent(input.flightPerformance.arrivalDelayPercent)
-      : clampPercent(safeNumber(input.faa?.arrivalsDelay))
+  const arrivalPressurePercent = clampNullablePercent(
+    input.flightPerformance?.arrivalDelayPercent ?? input.faa?.arrivalsDelay,
+  )
 
   const cancellationPercent = clampPercent(
     safeNumber(input.flightPerformance?.cancellationPercent),
   )
 
-  const averageDepartureDelayMinutes =
-    input.flightPerformance?.averageDepartureDelayMinutes !== undefined &&
-      input.flightPerformance.averageDepartureDelayMinutes !== null
-      ? Math.round(input.flightPerformance.averageDepartureDelayMinutes)
-      : Math.round(safeNumber(input.faa?.departuresDelay))
+  const averageDepartureDelayMinutes = Math.round(
+    safeNumber(
+      input.flightPerformance?.averageDepartureDelayMinutes ??
+      input.faa?.departuresDelay,
+    ),
+  )
 
-  const averageArrivalDelayMinutes =
-    input.flightPerformance?.averageArrivalDelayMinutes !== undefined &&
-      input.flightPerformance.averageArrivalDelayMinutes !== null
-      ? Math.round(input.flightPerformance.averageArrivalDelayMinutes)
-      : Math.round(safeNumber(input.faa?.arrivalsDelay))
+  const averageArrivalDelayMinutes = roundNullableNumber(
+    input.flightPerformance?.averageArrivalDelayMinutes ??
+    input.faa?.arrivalsDelay,
+  )
+
+  const departureDelayActive =
+    hasPositiveNumber(departurePressurePercent) ||
+    hasPositiveNumber(averageDepartureDelayMinutes) ||
+    hasPositiveNumber(input.faa?.departuresDelay) ||
+    hasFaaEventType(input.faa, ["departure_delay", "ground_delay"])
+
+  const arrivalDelayActive =
+    hasPositiveNumber(arrivalPressurePercent) ||
+    hasPositiveNumber(averageArrivalDelayMinutes) ||
+    hasPositiveNumber(input.faa?.arrivalsDelay) ||
+    hasFaaEventType(input.faa, ["arrival_delay"])
 
   const activeSources: SkysirvAirportPressureSource[] = []
 
@@ -291,6 +343,8 @@ export function computeSkysirvAirportPressure(
     cancellationPercent,
     averageDepartureDelayMinutes,
     averageArrivalDelayMinutes,
+    departureDelayActive,
+    arrivalDelayActive,
     primaryReason: getPrimaryReason(input),
     sourceBreakdown: {
       faaScore,
