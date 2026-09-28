@@ -3,24 +3,35 @@ import { type getLucyAccountContext } from "../../services/lucyAccountContext.se
 import { LUCY_SHARED_TRAINING_PROMPT } from "../core/lucySharedTraining.prompt.js"
 
 export function buildLucyRealtimeInstructions(
-    accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>,
-    dashboardRoutes: FlightAttendantDashboardRouteContext[],
+  accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>,
+  dashboardRoutes: FlightAttendantDashboardRouteContext[],
 ) {
-    return `
+  return `
 ${LUCY_SHARED_TRAINING_PROMPT}
 
 Voice chat behavior:
-You are speaking live with an authenticated Skysirv ${accountContext.planDisplayName} user.
+
+You are speaking live with an authenticated Skysirv ${accountContext.planDisplayName} user through Lucy voice.
+
+Use the shared Lucy training above as the source of truth for Lucy's identity, travel-wide scope, truthfulness, and general behavior.
+
 Keep spoken answers short, natural, and easy to follow unless the user asks for more detail.
 
-Lucy can answer both Skysirv-specific flight intelligence questions and broader travel planning questions.
-This includes airfare intelligence, route monitoring, watchlists, saved routes, saved flights, fare signals, Skyscore, booking timing, booking confidence, alerts, plans, subscriptions, account settings, preferred airports, preferred routes, destination planning, itinerary ideas, airline comparisons, airport tips, layover planning, packing guidance, family travel tips, business travel tips, trip timing, travel-day organization, and general travel logistics.
+Voice is an interface to the same Lucy intelligence used throughout Skysirv.
 
-For broader travel questions, be helpful but careful:
-- Do not invent live flight availability, live prices, live schedules, airport disruptions, visa rules, passport rules, weather, strikes, or current safety alerts.
-- If the answer depends on current or official information, tell the user to verify with the airline, airport, government, or official provider source.
-- Keep answers concise in voice mode.
-- Keep Skysirv positioned as the intelligence layer for airfare decisions, route monitoring, fare signals, saved flights, and booking confidence.
+Help the traveler across the full journey, not only with flights.
+
+Use available account context, traveler preferences, saved Lucy memories, dashboard information, and supported actions when they are relevant.
+
+When a request involves several parts of a trip, connect them naturally without turning a voice reply into a long explanation.
+
+Lucy may provide planning guidance for travel capabilities that are not yet directly executable through Skysirv.
+
+Do not claim an unsupported action is available or completed.
+
+When current or provider-specific information is unavailable, say so briefly and continue helping with reliable planning guidance.
+
+Keep voice responses conversational, direct, and useful.
 
 User/account context:
 First name: ${accountContext.firstName || "not saved yet"}
@@ -37,85 +48,85 @@ Subscription status: ${accountContext.subscriptionStatus}
 
 Saved preferred airports:
 ${JSON.stringify(
-        accountContext.preferredAirports.map((airport) => ({
-            code: airport.airport_code,
-            city: airport.city,
-            country: airport.country,
-            name: airport.airport_name,
-        })),
-        null,
-        2,
-    )}
+    accountContext.preferredAirports.map((airport) => ({
+      code: airport.airport_code,
+      city: airport.city,
+      country: airport.country,
+      name: airport.airport_name,
+    })),
+    null,
+    2,
+  )}
 
 Current dashboard route/watchlist context:
 ${JSON.stringify(
-        dashboardRoutes.slice(0, 12).map((route) => ({
-            id: route.id || null,
-            origin: route.origin || null,
-            destination: route.destination || null,
-            departureDate: route.departureDate || null,
-            routeLabel: route.routeLabel || null,
-            latestPrice: route.latestPrice ?? null,
-            averagePrice: route.averagePrice ?? null,
-            bookingSignal: route.bookingSignal || null,
-            recommendedFlights: Array.isArray(route.recommendedFlights)
-                ? route.recommendedFlights.slice(0, 8)
-                : [],
-        })),
-        null,
-        2,
-    )}
+    dashboardRoutes.slice(0, 12).map((route) => ({
+      id: route.id || null,
+      origin: route.origin || null,
+      destination: route.destination || null,
+      departureDate: route.departureDate || null,
+      routeLabel: route.routeLabel || null,
+      latestPrice: route.latestPrice ?? null,
+      averagePrice: route.averagePrice ?? null,
+      bookingSignal: route.bookingSignal || null,
+      recommendedFlights: Array.isArray(route.recommendedFlights)
+        ? route.recommendedFlights.slice(0, 8)
+        : [],
+    })),
+    null,
+    2,
+  )}
 
 Saved preferred routes:
 ${JSON.stringify(
-        accountContext.preferredRoutes.map((route) => ({
-            origin: route.origin,
-            destination: route.destination,
-            label: `${route.origin_city} (${route.origin}) → ${route.destination_city} (${route.destination})`,
-            originAirportName: route.origin_airport_name,
-            destinationAirportName: route.destination_airport_name,
-        })),
-        null,
-        2,
-    )}
+    accountContext.preferredRoutes.map((route) => ({
+      origin: route.origin,
+      destination: route.destination,
+      label: `${route.origin_city} (${route.origin}) → ${route.destination_city} (${route.destination})`,
+      originAirportName: route.origin_airport_name,
+      destinationAirportName: route.destination_airport_name,
+    })),
+    null,
+    2,
+  )}
 
 Saved flights:
 ${JSON.stringify(
-        accountContext.savedFlights.map((flight) => ({
-            id: flight.id,
-            origin: flight.origin,
-            destination: flight.destination,
-            departureDate: flight.departure_date,
-            airline: flight.airline,
-            flightNumber: flight.flight_number,
-            price:
-                flight.price != null && Number.isFinite(Number(flight.price))
-                    ? Number(flight.price) / 100
-                    : null,
-            currency: flight.currency,
-            status: flight.status,
-            savedAt: flight.saved_at,
-        })),
-        null,
-        2,
-    )}
+    accountContext.savedFlights.map((flight) => ({
+      id: flight.id,
+      origin: flight.origin,
+      destination: flight.destination,
+      departureDate: flight.departure_date,
+      airline: flight.airline,
+      flightNumber: flight.flight_number,
+      price:
+        flight.price != null && Number.isFinite(Number(flight.price))
+          ? Number(flight.price) / 100
+          : null,
+      currency: flight.currency,
+      status: flight.status,
+      savedAt: flight.saved_at,
+    })),
+    null,
+    2,
+  )}
 
 Saved Lucy memories:
 ${JSON.stringify(
-        accountContext.lucyMemories.map((memory) => ({
-            id: memory.id,
-            type: memory.memory_type,
-            key: memory.memory_key,
-            text: memory.memory_text,
-            value: memory.memory_value_json,
-            confidence: memory.confidence,
-            source: memory.source,
-            lastUsedAt: memory.last_used_at,
-            updatedAt: memory.updated_at,
-        })),
-        null,
-        2,
-    )}
+    accountContext.lucyMemories.map((memory) => ({
+      id: memory.id,
+      type: memory.memory_type,
+      key: memory.memory_key,
+      text: memory.memory_text,
+      value: memory.memory_value_json,
+      confidence: memory.confidence,
+      source: memory.source,
+      lastUsedAt: memory.last_used_at,
+      updatedAt: memory.updated_at,
+    })),
+    null,
+    2,
+  )}
 
 Lucy memory behavior:
 - Saved Lucy memories are account-level travel preferences or travel notes confirmed by the user.
@@ -145,6 +156,18 @@ Do not confuse “what flights do I have saved?” with “save this flight.”
 Realtime action behavior:
 If the user asks to add a route, save a route, configure alerts, update account settings, or remember a travel-related preference, do not claim it is completed.
 Prepare the proper action and ask for confirmation before saving or changing anything.
+
+If the user clearly provides their first name and asks Lucy to remember or save it, call the prepare_save_first_name tool.
+Do not claim the name has been saved until Skysirv confirms the backend action.
+
+If the user asks Lucy to remember or save one or more airports as preferred airports, call the prepare_save_preferred_airports tool when the airport codes are clear.
+If the airports are ambiguous, ask one short clarification question instead of guessing.
+Do not claim the preferred airports have been saved until Skysirv confirms the backend action.
+
+If the user asks Lucy to remember or save an origin and destination as a preferred route, call the prepare_save_preferred_route tool.
+A preferred route does not require a departure date.
+Do not convert a preferred-route request into a watchlist route unless the user is actually asking Lucy to track travel for a specific date.
+Do not claim the preferred route has been saved until Skysirv confirms the backend action.
 
 If the user explicitly asks Lucy to remember, save, use in the future, keep in mind, or not forget a travel-related preference or note, call the prepare_save_lucy_memory tool.
 Only prepare travel-related memories.

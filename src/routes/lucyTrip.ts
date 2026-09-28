@@ -13,6 +13,8 @@ import {
   type LucyTripStructuredResponse,
 } from "../lucy/training/lucyTripTraining.js"
 
+import { getLucyAccountContext } from "../lucy/services/lucyAccountContext.service.js"
+
 type LucyTripIncomingMessage = {
   role?: "user" | "assistant"
   content?: string
@@ -472,8 +474,6 @@ export async function lucyTripRoutes(app: FastifyInstance) {
       const user = request.user as {
         id: string
         email?: string
-        firstName?: string | null
-        plan?: string | null
       }
 
       const launchMode = normalizeLucyTripLaunchMode(body.launchMode)
@@ -493,13 +493,53 @@ export async function lucyTripRoutes(app: FastifyInstance) {
         })
       }
 
+      const accountContext = await getLucyAccountContext({
+        app,
+        userId: user.id,
+      })
+
       const model = getOpenAIChatModel()
 
       const systemPrompt = buildLucyTripTrainingPrompt({
         launchMode,
         initialIdea,
-        userFirstName: user.firstName || null,
-        userPlan: user.plan || null,
+        userFirstName: accountContext.firstName,
+        userPlan: accountContext.planDisplayName,
+        travelerContext: {
+          preferredAirports: accountContext.preferredAirports.map((airport) => ({
+            code: airport.airport_code,
+            name: airport.airport_name,
+            city: airport.city,
+            country: airport.country,
+          })),
+          preferredRoutes: accountContext.preferredRoutes.map((route) => ({
+            origin: route.origin,
+            destination: route.destination,
+            originCity: route.origin_city,
+            destinationCity: route.destination_city,
+          })),
+          savedFlights: accountContext.savedFlights.map((flight) => ({
+            origin: flight.origin,
+            destination: flight.destination,
+            departureDate:
+              flight.departure_date != null
+                ? String(flight.departure_date)
+                : null,
+            airline: flight.airline ?? null,
+            flightNumber: flight.flight_number ?? null,
+            price:
+              flight.price != null && Number.isFinite(Number(flight.price))
+                ? Number(flight.price) / 100
+                : null,
+            currency: flight.currency ?? null,
+            status: flight.status ?? null,
+          })),
+          memories: accountContext.lucyMemories.map((memory) => ({
+            type: memory.memory_type,
+            text: memory.memory_text,
+            value: memory.memory_value_json,
+          })),
+        },
         generatedAt: new Date().toISOString(),
       })
 

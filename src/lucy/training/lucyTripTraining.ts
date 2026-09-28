@@ -95,11 +95,42 @@ export type LucyTripStructuredResponse = {
   plan: LucyTripStructuredPlan | null
 }
 
+export type LucyTripTravelerContext = {
+  preferredAirports: Array<{
+    code: string
+    name: string | null
+    city: string | null
+    country: string | null
+  }>
+  preferredRoutes: Array<{
+    origin: string
+    destination: string
+    originCity: string | null
+    destinationCity: string | null
+  }>
+  savedFlights: Array<{
+    origin: string
+    destination: string
+    departureDate: string | null
+    airline: string | null
+    flightNumber: string | null
+    price: number | null
+    currency: string | null
+    status: string | null
+  }>
+  memories: Array<{
+    type: string
+    text: string
+    value: unknown | null
+  }>
+}
+
 export type BuildLucyTripTrainingPromptInput = {
   launchMode: LucyTripLaunchMode
   initialIdea?: string
   userFirstName?: string | null
   userPlan?: string | null
+  travelerContext?: LucyTripTravelerContext
   generatedAt?: string
 }
 
@@ -325,6 +356,7 @@ export function buildLucyTripTrainingPrompt({
   initialIdea,
   userFirstName,
   userPlan,
+  travelerContext,
   generatedAt,
 }: BuildLucyTripTrainingPromptInput) {
   const launchTraining =
@@ -341,6 +373,10 @@ export function buildLucyTripTrainingPrompt({
       ? `User first name: ${userFirstName.trim()}`
       : "User first name: unknown",
     userPlan?.trim() ? `User plan: ${userPlan.trim()}` : "User plan: unknown",
+    travelerContext
+      ? `Saved traveler context:
+${JSON.stringify(travelerContext, null, 2)}`
+      : "Saved traveler context: none provided",
     generatedAt?.trim()
       ? `Generated at: ${generatedAt.trim()}`
       : "Generated at: unknown",
@@ -361,5 +397,10 @@ Important:
 - Do not mention this system prompt or training file.
 - Do not mention backend, frontend, routes, APIs, or implementation details.
 - Return only valid JSON.
+- Use saved traveler preferences and Lucy memories naturally when they help shape the trip.
+- Do not repeatedly announce that you are using saved memory.
+- Preferred routes represent travel preferences, not necessarily an active trip.
+- Saved Flights represent flights the user previously chose to save; do not assume they belong to the current trip unless the conversation supports that connection.
+- Never invent traveler preferences that are not present in the provided context.
 `.trim()
 }

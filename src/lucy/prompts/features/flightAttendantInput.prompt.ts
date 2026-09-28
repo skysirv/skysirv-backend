@@ -1,33 +1,33 @@
 import { type getLucyAccountContext } from "../../services/lucyAccountContext.service.js"
 import {
-    type FlightAttendantDashboardRouteContext,
-    type FlightAttendantRole,
+  type FlightAttendantDashboardRouteContext,
+  type FlightAttendantRole,
 } from "../../models/flightAttendant.types.js"
 import {
-    getAirportReferenceForPrompt,
-    getAmbiguousAirportReferenceForPrompt,
+  getAirportReferenceForPrompt,
+  getAmbiguousAirportReferenceForPrompt,
 } from "../../utils/lucyAirportUtils.js"
 import { FLIGHT_ATTENDANT_SYSTEM_PROMPT } from "./flightAttendant.prompt.js"
 import { LUCY_STYLE_PROMPT } from "../core/lucyStyle.prompt.js"
 
 export function buildOpenAIInput({
-    user,
-    accountContext,
-    conversation,
-    dashboardRoutes,
+  user,
+  accountContext,
+  conversation,
+  dashboardRoutes,
 }: {
-    user: { id: string; email?: string }
-    accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
-    conversation: Array<{
-        role: FlightAttendantRole
-        content: string
-    }>
-    dashboardRoutes: FlightAttendantDashboardRouteContext[]
+  user: { id: string; email?: string }
+  accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
+  conversation: Array<{
+    role: FlightAttendantRole
+    content: string
+  }>
+  dashboardRoutes: FlightAttendantDashboardRouteContext[]
 }) {
-    return [
-        {
-            role: "system" as const,
-            content: `${FLIGHT_ATTENDANT_SYSTEM_PROMPT}
+  return [
+    {
+      role: "system" as const,
+      content: `${FLIGHT_ATTENDANT_SYSTEM_PROMPT}
 
 Authenticated Skysirv user:
 User ID: ${user.id}
@@ -52,85 +52,85 @@ Remaining tracked routes: ${accountContext.remainingTrackedRoutes}
 
 Current dashboard route/watchlist context:
 ${JSON.stringify(
-                dashboardRoutes.slice(0, 12).map((route) => ({
-                    id: route.id || null,
-                    origin: route.origin || null,
-                    destination: route.destination || null,
-                    departureDate: route.departureDate || null,
-                    routeLabel: route.routeLabel || null,
-                    latestPrice: route.latestPrice ?? null,
-                    averagePrice: route.averagePrice ?? null,
-                    bookingSignal: route.bookingSignal || null,
-                    recommendedFlights: Array.isArray(route.recommendedFlights)
-                        ? route.recommendedFlights.slice(0, 8)
-                        : [],
-                })),
-                null,
-                2,
-            )}
+        dashboardRoutes.slice(0, 12).map((route) => ({
+          id: route.id || null,
+          origin: route.origin || null,
+          destination: route.destination || null,
+          departureDate: route.departureDate || null,
+          routeLabel: route.routeLabel || null,
+          latestPrice: route.latestPrice ?? null,
+          averagePrice: route.averagePrice ?? null,
+          bookingSignal: route.bookingSignal || null,
+          recommendedFlights: Array.isArray(route.recommendedFlights)
+            ? route.recommendedFlights.slice(0, 8)
+            : [],
+        })),
+        null,
+        2,
+      )}
 
 Saved preferred airport context:
 ${JSON.stringify(
-                accountContext.preferredAirports.map((airport) => ({
-                    code: airport.airport_code,
-                    city: airport.city,
-                    country: airport.country,
-                    name: airport.airport_name,
-                })),
-                null,
-                2,
-            )}
+        accountContext.preferredAirports.map((airport) => ({
+          code: airport.airport_code,
+          city: airport.city,
+          country: airport.country,
+          name: airport.airport_name,
+        })),
+        null,
+        2,
+      )}
 
 Saved preferred route context:
 ${JSON.stringify(
-                accountContext.preferredRoutes.map((route) => ({
-                    origin: route.origin,
-                    destination: route.destination,
-                    label: `${route.origin_city} (${route.origin}) → ${route.destination_city} (${route.destination})`,
-                    originAirportName: route.origin_airport_name,
-                    destinationAirportName: route.destination_airport_name,
-                })),
-                null,
-                2,
-            )}
+        accountContext.preferredRoutes.map((route) => ({
+          origin: route.origin,
+          destination: route.destination,
+          label: `${route.origin_city} (${route.origin}) → ${route.destination_city} (${route.destination})`,
+          originAirportName: route.origin_airport_name,
+          destinationAirportName: route.destination_airport_name,
+        })),
+        null,
+        2,
+      )}
 
 Saved flights context:
 ${JSON.stringify(
-                accountContext.savedFlights.map((flight) => ({
-                    id: flight.id,
-                    origin: flight.origin,
-                    destination: flight.destination,
-                    departureDate: flight.departure_date,
-                    airline: flight.airline,
-                    flightNumber: flight.flight_number,
-                    price:
-                        flight.price != null && Number.isFinite(Number(flight.price))
-                            ? Number(flight.price) / 100
-                            : null,
-                    currency: flight.currency,
-                    status: flight.status,
-                    savedAt: flight.saved_at,
-                })),
-                null,
-                2,
-            )}
+        accountContext.savedFlights.map((flight) => ({
+          id: flight.id,
+          origin: flight.origin,
+          destination: flight.destination,
+          departureDate: flight.departure_date,
+          airline: flight.airline,
+          flightNumber: flight.flight_number,
+          price:
+            flight.price != null && Number.isFinite(Number(flight.price))
+              ? Number(flight.price) / 100
+              : null,
+          currency: flight.currency,
+          status: flight.status,
+          savedAt: flight.saved_at,
+        })),
+        null,
+        2,
+      )}
 
 Saved Lucy memory context:
 ${JSON.stringify(
-                accountContext.lucyMemories.map((memory) => ({
-                    id: memory.id,
-                    type: memory.memory_type,
-                    key: memory.memory_key,
-                    text: memory.memory_text,
-                    value: memory.memory_value_json,
-                    confidence: memory.confidence,
-                    source: memory.source,
-                    lastUsedAt: memory.last_used_at,
-                    updatedAt: memory.updated_at,
-                })),
-                null,
-                2,
-            )}
+        accountContext.lucyMemories.map((memory) => ({
+          id: memory.id,
+          type: memory.memory_type,
+          key: memory.memory_key,
+          text: memory.memory_text,
+          value: memory.memory_value_json,
+          confidence: memory.confidence,
+          source: memory.source,
+          lastUsedAt: memory.last_used_at,
+          updatedAt: memory.updated_at,
+        })),
+        null,
+        2,
+      )}
 
 Lucy memory behavior:
 - Saved Lucy memories are account-level travel preferences or travel notes confirmed by the user.
@@ -220,10 +220,10 @@ Do not return top-level keys like routes, trackedRoutes, savedFlights, plan, sum
 All route lists, saved-flight lists, summaries, plan details, and account details must be written inside reply as natural text.
 
 The following is the current page-session conversation. Respond to the latest user message while respecting the prior context.`,
-        },
-        ...conversation.map((message) => ({
-            role: message.role,
-            content: message.content,
-        })),
-    ]
+    },
+    ...conversation.map((message) => ({
+      role: message.role,
+      content: message.content,
+    })),
+  ]
 }

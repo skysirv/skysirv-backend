@@ -34,7 +34,10 @@ import {
   getPublicLucyDailyMessageLimit,
   PUBLIC_LUCY_LIMIT_REACHED_REPLY,
 } from "../lucy/services/publicLucyLimit.service.js"
-import { isClearlyOffTopic } from "../lucy/services/lucyScopeGuard.service.js"
+import {
+  isClearlyOffTopic,
+  LUCY_SCOPE_REDIRECT_REPLY,
+} from "../lucy/services/lucyScopeGuard.service.js"
 import { parseLucyStructuredChatResponse } from "../lucy/services/lucyStructuredResponse.service.js"
 import { buildVisibleFlightSaveResponse } from "../lucy/services/lucyVisibleFlight.service.js"
 import { getRealtimeWatchlistRoutes } from "../lucy/services/lucyRealtimeWatchlist.service.js"
@@ -254,8 +257,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         return {
           success: true,
           model: "scope-guardrail",
-          reply:
-            "I’m here for Skysirv and travel support, so I can’t help with that one here. I can help with flights, routes, trip planning, fare signals, watchlists, saved flights, or booking confidence.",
+          reply: LUCY_SCOPE_REDIRECT_REPLY,
         }
       }
 
@@ -307,8 +309,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         return {
           success: true,
           model: "scope-guardrail",
-          reply:
-            "I’m here for Skysirv and travel support, so I can’t help with that one here. I can help with flights, routes, trip planning, fare signals, watchlists, saved flights, or booking confidence.",
+          reply: LUCY_SCOPE_REDIRECT_REPLY,
         }
       }
 
