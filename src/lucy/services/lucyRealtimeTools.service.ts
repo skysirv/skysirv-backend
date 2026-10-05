@@ -123,7 +123,7 @@ export function getLucyRealtimeTools() {
       type: "function",
       name: "prepare_save_lucy_memory",
       description:
-        "Prepare a Lucy persistent memory action when the user explicitly asks Lucy to remember a travel-related preference or note.",
+        "Save a low-risk persistent Lucy travel memory when the traveler clearly provides a stable travel preference or travel-profile fact. This memory is executed immediately and does not require a second confirmation.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -132,7 +132,11 @@ export function getLucyRealtimeTools() {
           memoryKey: { type: "string" },
           memoryText: { type: "string" },
           memoryValueJson: { type: ["object", "null"] },
-          confirmationPrompt: { type: "string" },
+          confirmationPrompt: {
+            type: "string",
+            description:
+              "A short natural acknowledgement of what Lucy learned. Do not phrase this as a question.",
+          },
         },
         required: [
           "memoryType",

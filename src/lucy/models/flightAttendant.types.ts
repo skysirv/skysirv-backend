@@ -32,6 +32,7 @@ export type FlightAttendantChatBody = {
   messages?: FlightAttendantIncomingMessage[]
   tier?: "free" | "pro" | "business"
   dashboardRoutes?: FlightAttendantDashboardRouteContext[]
+  conversationId?: string
 }
 
 export type FlightAttendantPublicChatBody = {

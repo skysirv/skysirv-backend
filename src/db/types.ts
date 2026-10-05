@@ -263,6 +263,28 @@ export interface UserLucyMemoriesTable {
   updated_at: Date
 }
 
+export interface LucyConversationsTable {
+  id: string
+  user_id: string
+  title: string
+  pinned: boolean
+  planned_trip: boolean
+  status: string
+  created_at: Date
+  updated_at: Date
+}
+
+export interface LucyConversationMessagesTable {
+  id: string
+  conversation_id: string
+  user_id: string
+  role: string
+  content: string
+  source: string
+  client_message_id: string | null
+  created_at: Date
+}
+
 export interface Database {
   users: UsersTable
   email_verification_tokens: EmailVerificationTokensTable
@@ -280,6 +302,8 @@ export interface Database {
   user_preferred_airports: UserPreferredAirportsTable
   user_preferred_routes: UserPreferredRoutesTable
   user_lucy_memories: UserLucyMemoriesTable
+  lucy_conversations: LucyConversationsTable
+  lucy_conversation_messages: LucyConversationMessagesTable
   airport_indoor_features: AirportIndoorFeaturesTable
   stripe_events: StripeEventsTable
   admin_activity: AdminActivityTable

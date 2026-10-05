@@ -41,6 +41,13 @@ import {
 import { parseLucyStructuredChatResponse } from "../lucy/services/lucyStructuredResponse.service.js"
 import { buildVisibleFlightSaveResponse } from "../lucy/services/lucyVisibleFlight.service.js"
 import { getRealtimeWatchlistRoutes } from "../lucy/services/lucyRealtimeWatchlist.service.js"
+import {
+  createLucyConversation,
+  getLucyConversation,
+  getLucyConversationMessages,
+  getRecentLucyConversations,
+  saveLucyConversationMessage,
+} from "../lucy/services/lucyConversation.service.js"
 import { createLucyRealtimeClientSecret } from "../lucy/services/lucyRealtimeSession.service.js"
 
 import {
@@ -112,7 +119,69 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
       const user = request.user as { id: string; email?: string }
       const body = (request.body || {}) as {
         dashboardRoutes?: FlightAttendantDashboardRouteContext[]
+        conversationId?: string
       }
+
+      const requestedConversationId =
+        typeof body.conversationId === "string"
+          ? body.conversationId.trim()
+          : ""
+
+      let lucyConversation = requestedConversationId
+        ? await getLucyConversation(
+          app,
+          user.id,
+          requestedConversationId
+        )
+        : undefined
+
+      if (requestedConversationId && !lucyConversation) {
+        return reply.status(404).send({
+          success: false,
+          error: "Lucy conversation not found.",
+        })
+      }
+
+      if (!lucyConversation) {
+        const recentConversations =
+          await getRecentLucyConversations(
+            app,
+            user.id,
+            1
+          )
+
+        lucyConversation = recentConversations[0]
+      }
+
+      if (!lucyConversation) {
+        lucyConversation = await createLucyConversation(
+          app,
+          {
+            userId: user.id,
+            title: "New conversation",
+          }
+        )
+      }
+
+      const conversationId = lucyConversation.id
+
+      const persistedConversationMessages =
+        await getLucyConversationMessages(
+          app,
+          user.id,
+          conversationId
+        )
+
+      const realtimeConversationHistory =
+        persistedConversationMessages
+          .slice(-12)
+          .map((message) => ({
+            role:
+              message.role === "assistant"
+                ? ("assistant" as const)
+                : ("user" as const),
+            content: message.content,
+          }))
 
       const accountContext = await getLucyAccountContext({
         app,
@@ -150,6 +219,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         userId: user.id,
         accountContext,
         watchlistForRealtime,
+        conversationHistory: realtimeConversationHistory,
       })
 
       const data = openaiResponse.data
@@ -175,6 +245,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         model: LUCY_REALTIME_MODEL,
         voice: LUCY_REALTIME_VOICE,
         plan: accountContext.planDisplayName,
+        conversationId,
         session: data,
       }
     }
@@ -305,11 +376,75 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
           ?.content ||
         ""
 
+      const requestedConversationId =
+        typeof body.conversationId === "string"
+          ? body.conversationId.trim()
+          : ""
+
+      let lucyConversation = requestedConversationId
+        ? await getLucyConversation(
+          app,
+          user.id,
+          requestedConversationId
+        )
+        : undefined
+
+      if (requestedConversationId && !lucyConversation) {
+        return reply.status(404).send({
+          error: "Lucy conversation not found.",
+        })
+      }
+
+      if (!lucyConversation) {
+        lucyConversation = await createLucyConversation(
+          app,
+          {
+            userId: user.id,
+            title: latestUserMessage || undefined,
+          }
+        )
+      }
+
+      const conversationId = lucyConversation.id
+
+      if (latestUserMessage) {
+        await saveLucyConversationMessage(
+          app,
+          {
+            userId: user.id,
+            conversationId,
+            role: "user",
+            content: latestUserMessage,
+            source: "dashboard_text",
+          }
+        )
+      }
+
+      async function saveAssistantReply(
+        content: string
+      ) {
+        await saveLucyConversationMessage(
+          app,
+          {
+            userId: user.id,
+            conversationId,
+            role: "assistant",
+            content,
+            source: "dashboard_text",
+          }
+        )
+      }
+
       if (isClearlyOffTopic(latestUserMessage)) {
+        await saveAssistantReply(
+          LUCY_SCOPE_REDIRECT_REPLY
+        )
+
         return {
           success: true,
           model: "scope-guardrail",
           reply: LUCY_SCOPE_REDIRECT_REPLY,
+          conversationId,
         }
       }
 
@@ -330,11 +465,16 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
       })
 
       if (visibleFlightSaveResponse) {
+        await saveAssistantReply(
+          visibleFlightSaveResponse.reply
+        )
+
         return {
           success: true,
           model: "lucy-visible-flight-action-router",
           reply: visibleFlightSaveResponse.reply,
           action: visibleFlightSaveResponse.action,
+          conversationId,
         }
       }
 
@@ -350,13 +490,52 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         }),
       })
 
-      const lucyResponse = parseLucyStructuredChatResponse(response.output_text)
+      const lucyResponse =
+        parseLucyStructuredChatResponse(
+          response.output_text
+        )
+
+      if (
+        lucyResponse.action?.type ===
+        "save_lucy_memory"
+      ) {
+        const memoryAction =
+          lucyResponse.action
+
+        await saveLucyMemory(app, {
+          userId: user.id,
+          memoryType: memoryAction.memoryType,
+          memoryKey: memoryAction.memoryKey,
+          memoryText: memoryAction.memoryText,
+          memoryValueJson:
+            memoryAction.memoryValueJson ?? null,
+          confidence: "confirmed",
+          source: "conversational",
+        })
+
+        await saveAssistantReply(
+          lucyResponse.reply
+        )
+
+        return {
+          success: true,
+          model,
+          reply: lucyResponse.reply,
+          action: null,
+          conversationId,
+        }
+      }
+
+      await saveAssistantReply(
+        lucyResponse.reply
+      )
 
       return {
         success: true,
         model,
         reply: lucyResponse.reply,
         action: lucyResponse.action,
+        conversationId,
       }
     }
   )

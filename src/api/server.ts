@@ -26,6 +26,7 @@ import { skysirvLiveRoutes } from "../routes/skysirv-live.js"
 import { userPreferencesRoutes } from "../routes/user-preferences.js"
 import { flightAttendantRoutes } from "../routes/flightAttendant.js"
 import { lucyTripRoutes } from "../routes/lucyTrip.js"
+import { lucyConversationRoutes } from "../routes/lucy-conversations.js"
 import { bookingRoutes } from "../routes/booking.js"
 import { getMonitorQueue } from "../infra/queues.js"
 import { db } from "../db/kysely.js"
@@ -121,6 +122,7 @@ export function buildServer() {
   app.register(userPreferencesRoutes, { prefix: "/api" })
   app.register(flightAttendantRoutes, { prefix: "/api" })
   app.register(lucyTripRoutes, { prefix: "/api" })
+  app.register(lucyConversationRoutes, { prefix: "/api" })
 
   // Health
   app.get("/health", async () => {
