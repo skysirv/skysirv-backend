@@ -147,7 +147,6 @@ export async function getRecentLucyConversations(
     ])
     .where("user_id", "=", userId)
     .where("status", "=", "active")
-    .orderBy("pinned", "desc")
     .orderBy("updated_at", "desc")
     .limit(safeLimit)
     .execute()
