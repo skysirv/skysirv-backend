@@ -264,7 +264,7 @@ export interface UserLucyMemorySubjectsTable {
 export interface UserLucyMemoriesTable {
   id: string
   user_id: string
-  subject_id: string | null
+  subject_id: string
   memory_type: string
   memory_key: string
   memory_text: string
