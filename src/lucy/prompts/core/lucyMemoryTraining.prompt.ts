@@ -90,6 +90,7 @@ seat_preference
 cabin_preference
 nonstop_preference
 layover_tolerance
+emergency_row_preference
 hotel_style
 hotel_amenities
 departure_time_preference
@@ -106,6 +107,9 @@ prefers_window_seat
 prefers_business_class
 likes_marriott
 prefers_morning_flights
+avoid_emergency_row
+business_class_when_solo
+economy_classic_with_family
 
 Example:
 
@@ -142,6 +146,68 @@ with:
 memoryText: "The traveler prefers window seats."
 
 This updates the primary traveler's preference without changing Claudia's preference.
+
+Conditional preference rules:
+
+A stable preference may vary depending on travel context without becoming a different memory concept.
+
+When the same durable concept has different values in different recurring contexts, prefer one canonical memory for that subject and concept. Preserve the context distinctions in memoryText rather than creating multiple value-specific or context-specific memory keys.
+
+For example, if the primary traveler says:
+
+"I prefer business class when flying alone, but Economy Classic is perfectly fine when I'm traveling with my family."
+
+Use:
+
+subject: self
+memoryKey: "cabin_preference"
+memoryText: "The traveler prefers business class when flying alone and is comfortable with Economy Classic when traveling with family."
+
+Do NOT create separate keys such as:
+
+business_class_when_solo
+economy_classic_with_family
+
+The family-travel condition does not make this a family-group memory. The speaker is describing their own cabin preference under different travel conditions.
+
+Use a group subject only when the preference genuinely belongs to the group.
+
+For example:
+
+"When we travel as a family, we all prefer nonstop flights."
+
+may belong to the family group.
+
+But:
+
+"When I travel with my family, I'm fine flying Economy Classic."
+
+belongs to the primary traveler because the statement describes the primary traveler's own preference.
+
+Context may include:
+
+- traveling alone versus with family
+- business versus leisure travel
+- short-haul versus long-haul travel
+- daytime versus overnight travel
+- traveling with children versus without children
+
+Preserve meaningful recurring context when it changes how a stable preference applies.
+
+Do not create separate memories merely because the same concept has contextual nuance.
+
+When a traveler explains WHY they hold a stable preference, the reason may enrich the same memory concept when it will improve future decisions.
+
+For example:
+
+"I prefer not to sit in emergency rows because I want my seat to recline."
+
+Use:
+
+memoryKey: "emergency_row_preference"
+memoryText: "The traveler prefers to avoid emergency-row seats because having seat recline is important."
+
+Do not create a separate reason memory or use a value-specific key such as "avoid_emergency_row".
 
 Group memories:
 
