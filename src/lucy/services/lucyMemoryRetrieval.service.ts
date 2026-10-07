@@ -107,6 +107,48 @@ function isBroadMemoryQuestion(value: string) {
   )
 }
 
+const LEGACY_MEMORY_KEY_CANONICAL_MAP: Record<
+  string,
+  string
+> = {
+  prefers_aisle_seats_on_long_flights:
+    "seat_preference",
+  prefers_window_seats_on_short_flights:
+    "seat_preference",
+}
+
+function removeSupersededLegacyMemories<
+  T extends {
+    subject_id: string | null
+    memory_key: string
+    created_at: Date
+  },
+>(memories: T[]) {
+  return memories.filter((memory) => {
+    const canonicalKey =
+      LEGACY_MEMORY_KEY_CANONICAL_MAP[
+      memory.memory_key
+      ]
+
+    if (!canonicalKey) {
+      return true
+    }
+
+    const newerCanonicalMemory =
+      memories.find(
+        (candidate) =>
+          candidate.subject_id ===
+          memory.subject_id &&
+          candidate.memory_key ===
+          canonicalKey &&
+          candidate.created_at.getTime() >=
+          memory.created_at.getTime()
+      )
+
+    return !newerCanonicalMemory
+  })
+}
+
 export async function getRelevantLucyMemories({
   app,
   userId,
@@ -161,7 +203,10 @@ export async function getRelevantLucyMemories({
     .limit(200)
     .execute()
 
-  if (!memories.length) {
+  const retrievalMemories =
+    removeSupersededLegacyMemories(memories)
+
+  if (!retrievalMemories.length) {
     return []
   }
 
@@ -169,7 +214,7 @@ export async function getRelevantLucyMemories({
     getLatestUserMessage(conversation)
 
   if (isBroadMemoryQuestion(latestUserMessage)) {
-    return memories
+    return retrievalMemories
       .filter(
         (memory) =>
           memory.subject_type === "self" ||
@@ -193,7 +238,7 @@ export async function getRelevantLucyMemories({
     return []
   }
 
-  const ranked = memories
+  const ranked = retrievalMemories
     .map((memory) => {
       const memoryKeyTokens = tokenize(
         memory.memory_key.replace(/_/g, " ")
