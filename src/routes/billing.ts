@@ -20,6 +20,8 @@ const STRIPE_MANAGED_PLAN_IDS = [
   "business_yearly",
 ]
 
+const PAID_SIGNUPS_ENABLED = false
+
 function getSafeBillingPortalReturnUrl(returnUrl?: string) {
   const fallbackUrl = `${env.FRONTEND_BASE_URL}/account`
   const requestedReturnUrl = returnUrl?.trim()
@@ -56,6 +58,12 @@ export async function billingRoutes(app: FastifyInstance) {
 
         if (!user.id) {
           return reply.status(401).send({ error: "Unauthorized" })
+        }
+
+        if (!PAID_SIGNUPS_ENABLED) {
+          return reply.status(403).send({
+            error: "Paid plans are not currently available",
+          })
         }
 
         const body = request.body as CheckoutBody

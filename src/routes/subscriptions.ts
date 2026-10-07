@@ -30,22 +30,16 @@ export async function subscriptionRoutes(app: FastifyInstance) {
       const plan = body.plan || "free"
       const billingInterval = body.billing_interval ?? null
 
-      if (!["free", "pro", "business"].includes(plan)) {
-        reply.code(400)
-        return { error: "Invalid plan" }
+      if (plan !== "free") {
+        reply.code(403)
+        return {
+          error: "Paid plans are not currently available",
+        }
       }
 
       if (plan === "free" && billingInterval !== null) {
         reply.code(400)
         return { error: "Free plan cannot have a billing interval" }
-      }
-
-      if (
-        (plan === "pro" || plan === "business") &&
-        !["monthly", "yearly"].includes(billingInterval || "")
-      ) {
-        reply.code(400)
-        return { error: "Paid plans require billing_interval of monthly or yearly" }
       }
 
       const existing = await app.db
