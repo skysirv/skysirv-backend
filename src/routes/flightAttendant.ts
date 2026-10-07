@@ -59,7 +59,11 @@ import {
   isClearlyOffTopic,
   LUCY_SCOPE_REDIRECT_REPLY,
 } from "../lucy/services/lucyScopeGuard.service.js"
-import { parseLucyStructuredChatResponse } from "../lucy/services/lucyStructuredResponse.service.js"
+import {
+  LUCY_STRUCTURED_RESPONSE_FORMAT,
+  parseLucyStructuredChatResponse,
+  parseLucyStructuredChatResponseValue,
+} from "../lucy/services/lucyStructuredResponse.service.js"
 import { buildVisibleFlightSaveResponse } from "../lucy/services/lucyVisibleFlight.service.js"
 import { getRealtimeWatchlistRoutes } from "../lucy/services/lucyRealtimeWatchlist.service.js"
 import {
@@ -667,7 +671,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         )
       }
 
-      const response = await openai.responses.create({
+      const response = await openai.responses.parse({
         model,
         input: buildOpenAIInput({
           user,
@@ -676,12 +680,19 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
           dashboardRoutes,
           lucyMemories: relevantLucyMemories,
         }),
+        text: {
+          format: LUCY_STRUCTURED_RESPONSE_FORMAT,
+        },
       })
 
       const lucyResponse =
-        parseLucyStructuredChatResponse(
-          response.output_text
-        )
+        response.output_parsed
+          ? parseLucyStructuredChatResponseValue(
+            response.output_parsed
+          )
+          : parseLucyStructuredChatResponse(
+            response.output_text
+          )
 
       if (
         lucyResponse.action?.type ===
