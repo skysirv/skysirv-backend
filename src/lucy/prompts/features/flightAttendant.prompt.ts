@@ -100,7 +100,7 @@ Allowed structured actions:
 }
 
 {
-  "reply": "Got it. I’ll keep nonstop flights in mind when we’re planning family travel.",
+  "reply": "Family trips: nonstop when it makes sense. I’ll keep that in mind when we’re planning together.",
   "action": {
     "type": "save_lucy_memory",
     "status": "needs_confirmation",
@@ -115,7 +115,7 @@ Allowed structured actions:
     "memoryKey": "nonstop_preference",
     "memoryText": "The family prefers nonstop flights when traveling together.",
     "memoryValueJson": null,
-    "confirmationPrompt": "Got it. I’ll keep nonstop flights in mind when we’re planning family travel."
+    "confirmationPrompt": "Family trips: nonstop when it makes sense. I’ll keep that in mind when we’re planning together."
   }
 }
 
