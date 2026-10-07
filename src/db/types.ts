@@ -248,17 +248,37 @@ export interface UserPreferredRoutesTable {
   updated_at: Date
 }
 
+export interface UserLucyMemorySubjectsTable {
+  id: string
+  user_id: string
+  subject_type: string
+  subject_key: string
+  display_name: string
+  relationship_label: string | null
+  aliases: unknown
+  status: string
+  created_at: Date
+  updated_at: Date
+}
+
 export interface UserLucyMemoriesTable {
   id: string
   user_id: string
+  subject_id: string | null
   memory_type: string
   memory_key: string
   memory_text: string
   memory_value_json: unknown | null
   confidence: string
   source: string
+  channel: string
+  source_conversation_id: string | null
+  source_message_id: string | null
   status: string
   last_used_at: Date | null
+  reinforcement_count: number
+  last_reinforced_at: Date | null
+  usage_count: number
   created_at: Date
   updated_at: Date
 }
@@ -301,6 +321,7 @@ export interface Database {
   saved_flights: SavedFlightsTable
   user_preferred_airports: UserPreferredAirportsTable
   user_preferred_routes: UserPreferredRoutesTable
+  user_lucy_memory_subjects: UserLucyMemorySubjectsTable
   user_lucy_memories: UserLucyMemoriesTable
   lucy_conversations: LucyConversationsTable
   lucy_conversation_messages: LucyConversationMessagesTable

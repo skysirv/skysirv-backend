@@ -2,6 +2,33 @@ export function getLucyRealtimeTools() {
   return [
     {
       type: "function",
+      name: "retrieve_lucy_memories",
+      description:
+        "Retrieve relevant persistent Lucy travel memories for the current voice request. Memories may belong to the primary traveler, another individual traveler or companion, or a travel group such as the family. Returned memories include subject metadata identifying who or which group each memory belongs to. Use this when the answer may depend on durable preferences or travel-profile context, including hotel, airline, alliance, seat, cabin, nonstop, layover, family-travel, business-travel, timing, packing, ground-transport, budget, or similar preferences. When the traveler names or clearly refers to a person or group, preserve that identity in the query. Never transfer one subject's preference to another subject.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          query: {
+            type: "string",
+            description:
+              "The traveler's current question or request that requires relevant persistent memory. Preserve named people, relationships, or groups when they are relevant, such as Claudia, my wife, Tiago, my son, or my family, so subject-specific memories can be retrieved correctly.",
+          },
+          recentContext: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Up to five short recent conversation snippets that help disambiguate the current request, including which traveler, companion, or group is being discussed when relevant.",
+          },
+        },
+        required: [
+          "query",
+          "recentContext",
+        ],
+      },
+    },
+    {
+      type: "function",
       name: "prepare_watchlist_route",
       description:
         "Prepare a Skysirv watchlist route action when the user asks Lucy to track or add a route. This does not save the route yet; Skysirv must ask the user for confirmation first.",
@@ -128,6 +155,42 @@ export function getLucyRealtimeTools() {
         type: "object",
         additionalProperties: false,
         properties: {
+          subject: {
+            type: ["object", "null"],
+            additionalProperties: false,
+            properties: {
+              subjectType: {
+                type: "string",
+                enum: ["self", "person", "group"],
+              },
+              subjectKey: {
+                type: "string",
+                description:
+                  "Stable snake_case identity key for the person or group, such as claudia, tiago, or family. Use self for the primary traveler.",
+              },
+              displayName: {
+                type: "string",
+                description:
+                  "Human-readable name for the person or group, such as Claudia, Tiago, or Family.",
+              },
+              relationshipLabel: {
+                type: ["string", "null"],
+                description:
+                  "Known relationship to the primary traveler, such as spouse, child, coworker, friend, or family. Do not guess.",
+              },
+              aliases: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Known ways the traveler refers to this subject, such as Claudia, my wife, wife, or the family.",
+              },
+            },
+            required: [
+              "subjectType",
+              "subjectKey",
+              "displayName",
+            ],
+          },
           memoryType: { type: "string" },
           memoryKey: { type: "string" },
           memoryText: { type: "string" },
@@ -139,6 +202,7 @@ export function getLucyRealtimeTools() {
           },
         },
         required: [
+          "subject",
           "memoryType",
           "memoryKey",
           "memoryText",

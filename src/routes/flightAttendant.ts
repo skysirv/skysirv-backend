@@ -13,6 +13,14 @@ import {
   LUCY_REALTIME_VOICE,
 } from "../lucy/models/lucyRealtime.config.js"
 
+import {
+  isLucyMemoryType,
+} from "../lucy/models/lucyMemory.types.js"
+
+import {
+  cleanLucyMemorySubject,
+} from "../lucy/actions/lucyActionSanitizer.js"
+
 import { buildDashboardSummaryInput } from "../lucy/prompts/features/dashboardSummary.prompt.js"
 import { buildPublicHomepageOpenAIInput } from "../lucy/prompts/features/publicHomepageInput.prompt.js"
 import { buildOpenAIInput } from "../lucy/prompts/features/flightAttendantInput.prompt.js"
@@ -22,8 +30,21 @@ import {
   getOpenAIIntelligenceModel,
   openai,
 } from "../services/openai.js"
-import { saveLucyMemory } from "../services/lucyMemory.service.js"
+
+import {
+  markLucyMemoriesUsed,
+} from "../services/lucyMemory.service.js"
+
 import { getLucyAccountContext } from "../lucy/services/lucyAccountContext.service.js"
+
+import {
+  executeLucyMemoryCommand,
+} from "../lucy/services/lucyMemoryCommand.service.js"
+
+import {
+  getRelevantLucyMemories,
+} from "../lucy/services/lucyMemoryRetrieval.service.js"
+
 import {
   FALLBACK_DASHBOARD_SUMMARY,
   parseDashboardSummaryJson,
@@ -65,10 +86,27 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
       const user = request.user as { id: string; email?: string }
 
       const body = (request.body || {}) as {
+        subject?: unknown
         memoryType?: string
         memoryKey?: string
         memoryText?: string
         memoryValueJson?: unknown | null
+        sourceConversationId?: string | null
+      }
+
+      const subjectWasProvided =
+        body.subject !== undefined &&
+        body.subject !== null
+
+      const subject = subjectWasProvided
+        ? cleanLucyMemorySubject(body.subject)
+        : undefined
+
+      if (subjectWasProvided && !subject) {
+        return reply.status(400).send({
+          success: false,
+          error: "Invalid Lucy memory subject.",
+        })
       }
 
       const memoryType =
@@ -86,6 +124,28 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
           ? body.memoryText
           : ""
 
+      const requestedSourceConversationId =
+        typeof body.sourceConversationId === "string" &&
+          body.sourceConversationId.trim()
+          ? body.sourceConversationId.trim()
+          : null
+
+      let sourceConversationId: string | null = null
+
+      if (requestedSourceConversationId) {
+        const sourceConversation =
+          await getLucyConversation(
+            app,
+            user.id,
+            requestedSourceConversationId
+          )
+
+        if (sourceConversation) {
+          sourceConversationId =
+            sourceConversation.id
+        }
+      }
+
       if (!memoryKey || !memoryText) {
         return reply.status(400).send({
           success: false,
@@ -93,19 +153,123 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         })
       }
 
-      const memory = await saveLucyMemory(app, {
+      const result = await executeLucyMemoryCommand({
+        app,
         userId: user.id,
-        memoryType,
-        memoryKey,
-        memoryText,
-        memoryValueJson: body.memoryValueJson ?? null,
-        confidence: "confirmed",
-        source: "user_confirmed",
+        candidate: {
+          ...(subject ? { subject } : {}),
+          memoryType: isLucyMemoryType(memoryType)
+            ? memoryType
+            : "general_travel_note",
+          memoryKey,
+          memoryText,
+          memoryValueJson:
+            body.memoryValueJson ?? null,
+          confidence: "confirmed",
+          source: "explicit_user_statement",
+          channel: "voice",
+          sourceConversationId,
+          sourceMessageId: null,
+        },
       })
 
       return {
         success: true,
-        memory,
+        memory: result.memory,
+      }
+    }
+  )
+
+  app.post(
+    "/flight-attendant/memories/retrieve",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const user = request.user as {
+        id: string
+        email?: string
+      }
+
+      const body = (request.body || {}) as {
+        query?: string
+        recentContext?: string[]
+      }
+
+      const query =
+        typeof body.query === "string"
+          ? body.query.trim()
+          : ""
+
+      if (!query) {
+        return reply.status(400).send({
+          success: false,
+          error: "Memory retrieval query is required.",
+        })
+      }
+
+      const recentContext = Array.isArray(
+        body.recentContext
+      )
+        ? body.recentContext
+          .filter(
+            (item): item is string =>
+              typeof item === "string" &&
+              Boolean(item.trim())
+          )
+          .slice(-5)
+        : []
+
+      const conversation = [
+        ...recentContext.map((content) => ({
+          role: "assistant" as const,
+          content,
+        })),
+        {
+          role: "user" as const,
+          content: query,
+        },
+      ]
+
+      const memories =
+        await getRelevantLucyMemories({
+          app,
+          userId: user.id,
+          conversation,
+          limit: 8,
+        })
+
+      if (memories.length > 0) {
+        await markLucyMemoriesUsed(
+          app,
+          user.id,
+          memories.map((memory) => memory.id)
+        )
+      }
+
+      return {
+        success: true,
+        memories: memories.map((memory) => ({
+          subject: {
+            id: memory.subject_id ?? null,
+            type: memory.subject_type ?? null,
+            key: memory.subject_key ?? null,
+            displayName:
+              memory.subject_display_name ?? null,
+            relationship:
+              memory.subject_relationship_label ?? null,
+            aliases:
+              Array.isArray(memory.subject_aliases)
+                ? memory.subject_aliases
+                : [],
+          },
+          type: memory.memory_type,
+          key: memory.memory_key,
+          text: memory.memory_text,
+          value: memory.memory_value_json,
+          confidence: memory.confidence,
+          source: memory.source,
+        })),
       }
     }
   )
@@ -407,17 +571,22 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
 
       const conversationId = lucyConversation.id
 
+      let sourceUserMessageId: string | null = null
+
       if (latestUserMessage) {
-        await saveLucyConversationMessage(
-          app,
-          {
-            userId: user.id,
-            conversationId,
-            role: "user",
-            content: latestUserMessage,
-            source: "dashboard_text",
-          }
-        )
+        const savedUserMessage =
+          await saveLucyConversationMessage(
+            app,
+            {
+              userId: user.id,
+              conversationId,
+              role: "user",
+              content: latestUserMessage,
+              source: "dashboard_text",
+            }
+          )
+
+        sourceUserMessageId = savedUserMessage.id
       }
 
       async function saveAssistantReply(
@@ -480,6 +649,24 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
 
       const model = getOpenAIChatModel()
 
+      const relevantLucyMemories =
+        await getRelevantLucyMemories({
+          app,
+          userId: user.id,
+          conversation,
+          limit: 8,
+        })
+
+      if (relevantLucyMemories.length > 0) {
+        await markLucyMemoriesUsed(
+          app,
+          user.id,
+          relevantLucyMemories.map(
+            (memory) => memory.id
+          )
+        )
+      }
+
       const response = await openai.responses.create({
         model,
         input: buildOpenAIInput({
@@ -487,6 +674,7 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
           accountContext,
           conversation,
           dashboardRoutes,
+          lucyMemories: relevantLucyMemories,
         }),
       })
 
@@ -502,15 +690,26 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         const memoryAction =
           lucyResponse.action
 
-        await saveLucyMemory(app, {
+        await executeLucyMemoryCommand({
+          app,
           userId: user.id,
-          memoryType: memoryAction.memoryType,
-          memoryKey: memoryAction.memoryKey,
-          memoryText: memoryAction.memoryText,
-          memoryValueJson:
-            memoryAction.memoryValueJson ?? null,
-          confidence: "confirmed",
-          source: "conversational",
+          candidate: {
+            subject: memoryAction.subject,
+            memoryType: isLucyMemoryType(
+              memoryAction.memoryType
+            )
+              ? memoryAction.memoryType
+              : "general_travel_note",
+            memoryKey: memoryAction.memoryKey,
+            memoryText: memoryAction.memoryText,
+            memoryValueJson:
+              memoryAction.memoryValueJson ?? null,
+            confidence: "confirmed",
+            source: "conversational",
+            channel: "text",
+            sourceConversationId: conversationId,
+            sourceMessageId: sourceUserMessageId,
+          },
         })
 
         await saveAssistantReply(

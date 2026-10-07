@@ -1,3 +1,7 @@
+import type {
+  LucyMemorySubjectCandidate,
+} from "./lucyMemory.types.js"
+
 export type LucyWatchlistAction = {
   type: "add_watchlist_route"
   status: "needs_confirmation"
@@ -50,6 +54,7 @@ export type LucySaveVisibleFlightAction = {
 export type LucySaveMemoryAction = {
   type: "save_lucy_memory"
   status: "needs_confirmation"
+  subject?: LucyMemorySubjectCandidate
   memoryType: string
   memoryKey: string
   memoryText: string

@@ -10,19 +10,36 @@ import {
 import { FLIGHT_ATTENDANT_SYSTEM_PROMPT } from "./flightAttendant.prompt.js"
 import { LUCY_STYLE_PROMPT } from "../core/lucyStyle.prompt.js"
 
+type LucyPromptMemory =
+  Awaited<
+    ReturnType<typeof getLucyAccountContext>
+  >["lucyMemories"][number] & {
+    subject_id?: string | null
+    subject_type?: string | null
+    subject_key?: string | null
+    subject_display_name?: string | null
+    subject_relationship_label?: string | null
+    subject_aliases?: unknown
+  }
+
 export function buildOpenAIInput({
   user,
   accountContext,
   conversation,
   dashboardRoutes,
+  lucyMemories =
+  accountContext.lucyMemories,
 }: {
   user: { id: string; email?: string }
-  accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
+  accountContext: Awaited<
+    ReturnType<typeof getLucyAccountContext>
+  >
   conversation: Array<{
     role: FlightAttendantRole
     content: string
   }>
   dashboardRoutes: FlightAttendantDashboardRouteContext[]
+  lucyMemories?: LucyPromptMemory[]
 }) {
   return [
     {
@@ -117,8 +134,23 @@ ${JSON.stringify(
 
 Saved Lucy memory context:
 ${JSON.stringify(
-        accountContext.lucyMemories.map((memory) => ({
+        lucyMemories.map((memory) => ({
           id: memory.id,
+
+          subject: {
+            id: memory.subject_id ?? null,
+            type: memory.subject_type ?? null,
+            key: memory.subject_key ?? null,
+            displayName:
+              memory.subject_display_name ?? null,
+            relationship:
+              memory.subject_relationship_label ?? null,
+            aliases:
+              Array.isArray(memory.subject_aliases)
+                ? memory.subject_aliases
+                : [],
+          },
+
           type: memory.memory_type,
           key: memory.memory_key,
           text: memory.memory_text,
@@ -132,15 +164,16 @@ ${JSON.stringify(
         2,
       )}
 
-Lucy memory behavior:
-- Saved Lucy memories are account-level travel preferences or travel notes confirmed by the user.
-- Use saved Lucy memories naturally when answering travel, flight, airport, route, itinerary, packing, family travel, business travel, and booking-confidence questions.
-- Do not over-mention that you are using memory.
-- If saved Lucy memories are empty, do not say the user has no memory unless they ask.
-- Never claim a new memory has been saved unless the frontend/backend confirms it.
-- For ordinary low-risk travel memories, return a structured save_lucy_memory action without asking the user for a second confirmation when the user has already clearly provided the information.
-- Lucy may also save a stable travel-profile fact when the user clearly answers a natural travel-related question Lucy asked.
-- Do not automatically save temporary trip details or casual statements unless the user explicitly asks Lucy to remember them.
+Retrieved Lucy memory context rules:
+- The Saved Lucy memory context above contains memories selected for relevance to the current conversation.
+- Each memory belongs to the subject identified in its subject metadata when that metadata is available.
+- subject type "self" means the primary traveler.
+- subject type "person" means another individual traveler or companion.
+- subject type "group" means a travel group such as the family.
+- Never transfer a preference from one subject to another.
+- When a request names or clearly involves a specific person or group, use memories belonging to that subject when relevant.
+- Do not apply another person's preferences merely because that memory was retrieved.
+- Current-trip instructions still override saved defaults for the active trip without automatically changing persistent memory.
 
 Frontend dashboard tier hint: ${accountContext.frontendTier}
 
