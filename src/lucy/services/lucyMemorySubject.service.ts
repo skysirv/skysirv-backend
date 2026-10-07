@@ -115,7 +115,7 @@ export async function getOrCreateSelfLucyMemorySubject(
       display_name:
         user?.first_name?.trim() || "Traveler",
       relationship_label: "self",
-      aliases: ["self", "me"],
+      aliases: JSON.stringify(["self", "me"]),
       status: "active",
       created_at: now,
       updated_at: now,
@@ -292,7 +292,7 @@ export async function resolveLucyMemorySubject({
       subject_key: subjectKey,
       display_name: displayName,
       relationship_label: relationshipLabel,
-      aliases,
+      aliases: JSON.stringify(aliases),
       status: "active",
       created_at: now,
       updated_at: now,
