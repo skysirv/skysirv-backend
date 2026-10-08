@@ -29,6 +29,33 @@ export function getLucyRealtimeTools() {
     },
     {
       type: "function",
+      name: "retrieve_recent_conversation_context",
+      description:
+        "Retrieve relevant context from the traveler's recent Lucy conversations when the current request refers to something discussed in another conversation or thread. Use this for requests such as what were we just talking about, what did we discuss before, what trip was I planning, what flight was I looking at, or when the traveler refers to an earlier conversation whose details are not present in the current thread. This is conversation continuity, not persistent traveler memory. Do not use this tool for durable preferences that belong in retrieve_lucy_memories. Answer only from the conversation evidence returned by this tool. If no matching prior conversation context is returned, say that you could not recover the earlier detail and do not invent dates, destinations, airlines, routes, prices, or other travel facts.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          query: {
+            type: "string",
+            description:
+              "The traveler's current request describing what earlier conversation or travel detail they are trying to recover.",
+          },
+          recentContext: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Up to five short snippets from the current conversation that help identify which prior discussion the traveler means.",
+          },
+        },
+        required: [
+          "query",
+          "recentContext",
+        ],
+      },
+    },
+    {
+      type: "function",
       name: "prepare_watchlist_route",
       description:
         "Prepare a Skysirv watchlist route action when the user asks Lucy to track or add a route. This does not save the route yet; Skysirv must ask the user for confirmation first.",

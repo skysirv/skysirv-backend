@@ -22,7 +22,9 @@ import {
 } from "../lucy/actions/lucyActionSanitizer.js"
 
 import { buildDashboardSummaryInput } from "../lucy/prompts/features/dashboardSummary.prompt.js"
+
 import { buildPublicHomepageOpenAIInput } from "../lucy/prompts/features/publicHomepageInput.prompt.js"
+
 import { buildOpenAIInput } from "../lucy/prompts/features/flightAttendantInput.prompt.js"
 
 import {
@@ -49,23 +51,29 @@ import {
   FALLBACK_DASHBOARD_SUMMARY,
   parseDashboardSummaryJson,
 } from "../lucy/services/lucyDashboardSummary.service.js"
+
 import {
   checkPublicLucyDailyLimit,
   getPublicLucyDailyLimitStatus,
   getPublicLucyDailyMessageLimit,
   PUBLIC_LUCY_LIMIT_REACHED_REPLY,
 } from "../lucy/services/publicLucyLimit.service.js"
+
 import {
   isClearlyOffTopic,
   LUCY_SCOPE_REDIRECT_REPLY,
 } from "../lucy/services/lucyScopeGuard.service.js"
+
 import {
   LUCY_STRUCTURED_RESPONSE_FORMAT,
   parseLucyStructuredChatResponse,
   parseLucyStructuredChatResponseValue,
 } from "../lucy/services/lucyStructuredResponse.service.js"
+
 import { buildVisibleFlightSaveResponse } from "../lucy/services/lucyVisibleFlight.service.js"
+
 import { getRealtimeWatchlistRoutes } from "../lucy/services/lucyRealtimeWatchlist.service.js"
+
 import {
   createLucyConversation,
   getLucyConversation,
@@ -73,6 +81,11 @@ import {
   getRecentLucyConversations,
   saveLucyConversationMessage,
 } from "../lucy/services/lucyConversation.service.js"
+
+import {
+  getRelevantRecentConversationContext,
+} from "../lucy/services/lucyConversationContext.service.js"
+
 import { createLucyRealtimeClientSecret } from "../lucy/services/lucyRealtimeSession.service.js"
 
 import {
@@ -279,6 +292,90 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
   )
 
   app.post(
+    "/flight-attendant/conversations/retrieve-context",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const user = request.user as {
+        id: string
+        email?: string
+      }
+
+      const body = (request.body || {}) as {
+        query?: string
+        recentContext?: string[]
+        currentConversationId?: string | null
+      }
+
+      const query =
+        typeof body.query === "string"
+          ? body.query.trim()
+          : ""
+
+      if (!query) {
+        return reply.status(400).send({
+          success: false,
+          error: "Conversation context query is required.",
+        })
+      }
+
+      const recentContext = Array.isArray(
+        body.recentContext
+      )
+        ? body.recentContext
+          .filter(
+            (item): item is string =>
+              typeof item === "string" &&
+              Boolean(item.trim())
+          )
+          .slice(-5)
+        : []
+
+      const currentConversationId =
+        typeof body.currentConversationId === "string" &&
+          body.currentConversationId.trim()
+          ? body.currentConversationId.trim()
+          : null
+
+      const retrievalQuery = [
+        ...recentContext,
+        query,
+      ]
+        .join(" ")
+        .trim()
+
+      const conversations =
+        await getRelevantRecentConversationContext({
+          app,
+          userId: user.id,
+          currentConversationId,
+          query: retrievalQuery,
+          conversationLimit: 3,
+        })
+
+      return {
+        success: true,
+        conversations: conversations.map(
+          (conversation) => ({
+            conversationId:
+              conversation.conversationId,
+            title: conversation.title,
+            updatedAt: conversation.updatedAt,
+            messages: conversation.messages.map(
+              (message) => ({
+                role: message.role,
+                content: message.content,
+                createdAt: message.createdAt,
+              })
+            ),
+          })
+        ),
+      }
+    }
+  )
+
+  app.post(
     "/flight-attendant/realtime-session",
     {
       preHandler: [app.authenticate],
@@ -294,6 +391,8 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         typeof body.conversationId === "string"
           ? body.conversationId.trim()
           : ""
+
+      let conversationCreated = false
 
       let lucyConversation = requestedConversationId
         ? await getLucyConversation(
@@ -311,17 +410,6 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
       }
 
       if (!lucyConversation) {
-        const recentConversations =
-          await getRecentLucyConversations(
-            app,
-            user.id,
-            1
-          )
-
-        lucyConversation = recentConversations[0]
-      }
-
-      if (!lucyConversation) {
         lucyConversation = await createLucyConversation(
           app,
           {
@@ -329,6 +417,8 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
             title: "New conversation",
           }
         )
+
+        conversationCreated = true
       }
 
       const conversationId = lucyConversation.id
@@ -414,6 +504,16 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         voice: LUCY_REALTIME_VOICE,
         plan: accountContext.planDisplayName,
         conversationId,
+        conversationCreated,
+        conversation: {
+          id: lucyConversation.id,
+          title: lucyConversation.title,
+          pinned: lucyConversation.pinned,
+          planned_trip: lucyConversation.planned_trip,
+          status: lucyConversation.status,
+          created_at: lucyConversation.created_at,
+          updated_at: lucyConversation.updated_at,
+        },
         session: data,
       }
     }
