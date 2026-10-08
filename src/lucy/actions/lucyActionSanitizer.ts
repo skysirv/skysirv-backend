@@ -8,14 +8,14 @@ import {
   type LucyWatchlistAction,
 } from "../models/lucyActions.types.js"
 import {
+  isLucyMemorySubjectType,
+  type LucyMemorySubjectCandidate,
+} from "../models/lucyMemory.types.js"
+import {
   cleanAirportCode,
   getAirportDisplayLabel,
 } from "../utils/lucyAirportUtils.js"
 import { cleanDepartureDate } from "../utils/lucyDateUtils.js"
-import {
-  isLucyMemorySubjectType,
-  type LucyMemorySubjectCandidate,
-} from "../models/lucyMemory.types.js"
 
 export function cleanLucyWatchlistAction(value: unknown): LucyWatchlistAction | null {
   if (!value || typeof value !== "object") return null

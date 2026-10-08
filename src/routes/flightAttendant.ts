@@ -93,6 +93,10 @@ import {
   normalizeConversation,
 } from "../lucy/utils/lucyConversationUtils.js"
 
+import {
+  searchLucyFlights,
+} from "../lucy/services/lucyFlightSearch.service.js"
+
 export async function flightAttendantRoutes(app: FastifyInstance) {
   app.post(
     "/flight-attendant/memories",
@@ -376,6 +380,147 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
   )
 
   app.post(
+    "/flight-attendant/flights/search",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const body = (request.body || {}) as {
+        tripType?: unknown
+        origin?: unknown
+        destination?: unknown
+        departureDate?: unknown
+        returnDate?: unknown
+        adults?: unknown
+        children?: unknown
+        infants?: unknown
+        cabinClass?: unknown
+        maxConnections?: unknown
+        airlineIataCode?: unknown
+        departurePeriod?: unknown
+        maxResults?: unknown
+      }
+
+      const tripType =
+        body.tripType === "round_trip"
+          ? "round_trip"
+          : "one_way"
+
+      const origin =
+        typeof body.origin === "string"
+          ? body.origin.trim().toUpperCase()
+          : ""
+
+      const destination =
+        typeof body.destination === "string"
+          ? body.destination.trim().toUpperCase()
+          : ""
+
+      const departureDate =
+        typeof body.departureDate === "string"
+          ? body.departureDate.trim()
+          : ""
+
+      const returnDate =
+        typeof body.returnDate === "string" &&
+          body.returnDate.trim()
+          ? body.returnDate.trim()
+          : null
+
+      const cabinClass =
+        body.cabinClass === "premium_economy" ||
+          body.cabinClass === "business" ||
+          body.cabinClass === "first"
+          ? body.cabinClass
+          : "economy"
+
+      const departurePeriod =
+        body.departurePeriod === "early_morning" ||
+          body.departurePeriod === "morning" ||
+          body.departurePeriod === "afternoon" ||
+          body.departurePeriod === "evening"
+          ? body.departurePeriod
+          : "any"
+
+      if (
+        origin.length !== 3 ||
+        destination.length !== 3 ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(departureDate)
+      ) {
+        return reply.status(400).send({
+          success: false,
+          error:
+            "Origin, destination, and a valid departure date are required.",
+        })
+      }
+
+      if (
+        tripType === "round_trip" &&
+        !returnDate
+      ) {
+        return reply.status(400).send({
+          success: false,
+          error:
+            "Return date is required for round-trip searches.",
+        })
+      }
+
+      try {
+        const result = await searchLucyFlights({
+          tripType,
+          origin,
+          destination,
+          departureDate,
+          returnDate,
+          adults:
+            typeof body.adults === "number"
+              ? body.adults
+              : 1,
+          children:
+            typeof body.children === "number"
+              ? body.children
+              : 0,
+          infants:
+            typeof body.infants === "number"
+              ? body.infants
+              : 0,
+          cabinClass,
+          maxConnections:
+            typeof body.maxConnections === "number"
+              ? body.maxConnections
+              : 1,
+          airlineIataCode:
+            typeof body.airlineIataCode === "string"
+              ? body.airlineIataCode.trim().toUpperCase()
+              : null,
+          departurePeriod,
+          maxResults:
+            typeof body.maxResults === "number"
+              ? body.maxResults
+              : 5,
+        })
+
+        return {
+          success: true,
+          ...result,
+        }
+      } catch (error) {
+        request.log.error(
+          { error },
+          "Lucy realtime flight search failed"
+        )
+
+        return reply.status(502).send({
+          success: false,
+          error:
+            "Lucy could not complete the live flight search right now.",
+          offers: [],
+        })
+      }
+    }
+  )
+
+  app.post(
     "/flight-attendant/realtime-session",
     {
       preHandler: [app.authenticate],
@@ -385,12 +530,26 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
       const body = (request.body || {}) as {
         dashboardRoutes?: FlightAttendantDashboardRouteContext[]
         conversationId?: string
+        clientLocalDateTime?: string
+        clientTimeZone?: string | null
       }
 
       const requestedConversationId =
         typeof body.conversationId === "string"
           ? body.conversationId.trim()
           : ""
+
+      const clientLocalDateTime =
+        typeof body.clientLocalDateTime === "string" &&
+          body.clientLocalDateTime.trim()
+          ? body.clientLocalDateTime.trim()
+          : null
+
+      const clientTimeZone =
+        typeof body.clientTimeZone === "string" &&
+          body.clientTimeZone.trim()
+          ? body.clientTimeZone.trim()
+          : null
 
       let conversationCreated = false
 
@@ -478,6 +637,8 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         accountContext,
         watchlistForRealtime,
         conversationHistory: realtimeConversationHistory,
+        clientLocalDateTime,
+        clientTimeZone,
       })
 
       const data = openaiResponse.data

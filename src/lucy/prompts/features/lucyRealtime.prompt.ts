@@ -1,7 +1,7 @@
 import { type FlightAttendantDashboardRouteContext } from "../../models/flightAttendant.types.js"
 import { type getLucyAccountContext } from "../../services/lucyAccountContext.service.js"
-import { LUCY_SHARED_TRAINING_PROMPT } from "../core/lucySharedTraining.prompt.js"
 import { LUCY_MEMORY_TRAINING_PROMPT } from "../core/lucyMemoryTraining.prompt.js"
+import { LUCY_SHARED_TRAINING_PROMPT } from "../core/lucySharedTraining.prompt.js"
 import { LUCY_STYLE_PROMPT } from "../core/lucyStyle.prompt.js"
 
 export function buildLucyRealtimeInstructions(
@@ -11,7 +11,49 @@ export function buildLucyRealtimeInstructions(
     role: "user" | "assistant"
     content: string
   }> = [],
+  clientLocalDateTime: string | null = null,
+  clientTimeZone: string | null = null,
 ) {
+  const realtimeDateTimeContext = (() => {
+    const sourceDate =
+      clientLocalDateTime
+        ? new Date(clientLocalDateTime)
+        : new Date()
+
+    const validDate =
+      !Number.isNaN(sourceDate.getTime())
+        ? sourceDate
+        : new Date()
+
+    if (clientTimeZone) {
+      try {
+        return {
+          formatted: new Intl.DateTimeFormat(
+            "en-US",
+            {
+              timeZone: clientTimeZone,
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              timeZoneName: "short",
+            }
+          ).format(validDate),
+          timeZone: clientTimeZone,
+        }
+      } catch {
+        // Fall through to UTC if the client timezone is invalid.
+      }
+    }
+
+    return {
+      formatted: validDate.toISOString(),
+      timeZone: "UTC",
+    }
+  })()
+
   const persistedConversationContext =
     conversationHistory.length > 0
       ? conversationHistory
@@ -52,6 +94,26 @@ Dynamic persistent memory retrieval:
 - After retrieve_lucy_memories returns, use only the returned memories that are relevant to the current request.
 - If retrieve_lucy_memories returns no memories, answer naturally without inventing saved preferences.
 - Never mention the retrieval tool, memory lookup process, or internal system behavior to the traveler.
+
+Live flight search behavior:
+
+- When the traveler asks Lucy to find, search, compare, recommend, price, or check availability for actual flights, use search_flights before answering with flight options.
+- Never invent, estimate, assume, or rely on general knowledge for current flight schedules, flight numbers, fares, seat availability, or live airline options.
+- Do not say that Skysirv lacks live flight pricing or availability when search_flights is available.
+- Do not tell the traveler to check an airline website or another booking platform before attempting search_flights.
+- Only call search_flights once the required origin, destination, and departure date are clear.
+- If one of those required search details is missing or genuinely ambiguous, ask one short clarification question.
+- Resolve conversational airport references naturally when they are unambiguous. For example, "Logan" in a Boston-origin conversation means BOS.
+- Respect trip-specific choices already established in the current conversation, including one-way versus round-trip, airline, cabin, nonstop preference, departure period, passenger count, and selected date.
+- If the traveler has already supplied a detail, do not ask for it again.
+- When the traveler names a specific airline and its IATA code is known from reliable context, pass that code to search_flights. For JetBlue, use B6.
+- After search_flights returns, describe only offers actually returned by the tool.
+- Treat returned prices, times, flight numbers, stops, airlines, and availability as live search evidence for that search.
+- Do not describe an offer that was not returned.
+- If no matching offers are returned, say that no matching live offers were found under the current filters. You may then offer to broaden the airline, departure-time, cabin, or connection filters.
+- If the live search fails, say briefly that the live flight search could not be completed right now. Do not replace the failed search with guessed schedules or prices.
+- Never expose provider implementation details, API names, tool names, offer-request IDs, or internal system behavior unless the traveler explicitly asks about Skysirv's technical architecture.
+- Keep spoken flight-search results concise. Lead with the strongest two or three matching options rather than reading a large result set aloud.
 
 When a request involves several parts of a trip, connect them naturally without turning a voice reply into a long explanation.
 

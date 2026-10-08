@@ -56,6 +56,114 @@ export function getLucyRealtimeTools() {
     },
     {
       type: "function",
+      name: "search_flights",
+      description:
+        "Search live Skysirv flight inventory through the connected flight provider. Use this whenever the traveler asks Lucy to find, search, compare, recommend, price, or check availability for flights. Never guess schedules, fares, availability, flight numbers, or live airline options when this tool can answer the request. Only call the tool once the required origin, destination, and departure date are clear. If required search details are missing, ask one short clarification question first.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          tripType: {
+            type: "string",
+            enum: ["one_way", "round_trip"],
+            description:
+              "Whether the traveler wants a one-way or round-trip flight.",
+          },
+          origin: {
+            type: "string",
+            description:
+              "Three-letter IATA airport code for the departure airport, such as BOS.",
+          },
+          destination: {
+            type: "string",
+            description:
+              "Three-letter IATA airport code for the destination airport, such as LAS.",
+          },
+          departureDate: {
+            type: "string",
+            description:
+              "Departure date in YYYY-MM-DD format.",
+          },
+          returnDate: {
+            type: ["string", "null"],
+            description:
+              "Return date in YYYY-MM-DD format for round trips. Use null for one-way trips.",
+          },
+          adults: {
+            type: "integer",
+            minimum: 1,
+            maximum: 9,
+          },
+          children: {
+            type: "integer",
+            minimum: 0,
+            maximum: 8,
+          },
+          infants: {
+            type: "integer",
+            minimum: 0,
+            maximum: 8,
+          },
+          cabinClass: {
+            type: "string",
+            enum: [
+              "economy",
+              "premium_economy",
+              "business",
+              "first",
+            ],
+          },
+          maxConnections: {
+            type: "integer",
+            minimum: 0,
+            maximum: 2,
+            description:
+              "Maximum allowed connections. Use 0 when the traveler specifically wants nonstop.",
+          },
+          airlineIataCode: {
+            type: ["string", "null"],
+            description:
+              "Optional two-character airline IATA code when the traveler specifies an airline, such as B6 for JetBlue. Use null when airline is unrestricted.",
+          },
+          departurePeriod: {
+            type: "string",
+            enum: [
+              "early_morning",
+              "morning",
+              "afternoon",
+              "evening",
+              "any",
+            ],
+            description:
+              "Requested departure period. early_morning means roughly 5 AM to 8 AM; morning means roughly 5 AM to noon.",
+          },
+          maxResults: {
+            type: "integer",
+            minimum: 1,
+            maximum: 8,
+            description:
+              "Maximum number of matching flight offers Lucy needs. Usually use 5.",
+          },
+        },
+        required: [
+          "tripType",
+          "origin",
+          "destination",
+          "departureDate",
+          "returnDate",
+          "adults",
+          "children",
+          "infants",
+          "cabinClass",
+          "maxConnections",
+          "airlineIataCode",
+          "departurePeriod",
+          "maxResults",
+        ],
+      },
+    },
+    {
+      type: "function",
       name: "prepare_watchlist_route",
       description:
         "Prepare a Skysirv watchlist route action when the user asks Lucy to track or add a route. This does not save the route yet; Skysirv must ask the user for confirmation first.",

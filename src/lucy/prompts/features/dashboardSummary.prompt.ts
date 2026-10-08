@@ -1,35 +1,35 @@
-import { type getUserWatchlist } from "../../../db/watchlist.js"
-import { type getLucyAccountContext } from "../../services/lucyAccountContext.service.js"
+import { type getUserWatchlist } from "../../../db/watchlist.js";
+import { type getLucyAccountContext } from "../../services/lucyAccountContext.service.js";
 
 export function buildDashboardSummaryInput({
-    user,
-    accountContext,
-    watchlist,
+  user,
+  accountContext,
+  watchlist,
 }: {
-    user: { id: string; email?: string }
-    accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
-    watchlist: Awaited<ReturnType<typeof getUserWatchlist>>
+  user: { id: string; email?: string }
+  accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
+  watchlist: Awaited<ReturnType<typeof getUserWatchlist>>
 }) {
-    const routes = watchlist.slice(0, 12).map((route) => ({
-        origin: route.origin,
-        destination: route.destination,
-        departureDate: route.departure_date,
-        latestPrice: route.latest_price,
-        averagePrice: route.avg_price ? Number(route.avg_price) / 100 : null,
-        latestAirline: route.latest_airline,
-        latestFlightNumber: route.latest_flight_number,
-        latestCapturedAt: route.latest_captured_at,
-        bookingSignal: route.booking_signal,
-        volatilityIndex: route.volatility_index,
-        recommendedFlightsCount: Array.isArray(route.recommended_flights)
-            ? route.recommended_flights.length
-            : 0,
-    }))
+  const routes = watchlist.slice(0, 12).map((route) => ({
+    origin: route.origin,
+    destination: route.destination,
+    departureDate: route.departure_date,
+    latestPrice: route.latest_price,
+    averagePrice: route.avg_price ? Number(route.avg_price) / 100 : null,
+    latestAirline: route.latest_airline,
+    latestFlightNumber: route.latest_flight_number,
+    latestCapturedAt: route.latest_captured_at,
+    bookingSignal: route.booking_signal,
+    volatilityIndex: route.volatility_index,
+    recommendedFlightsCount: Array.isArray(route.recommended_flights)
+      ? route.recommended_flights.length
+      : 0,
+  }))
 
-    return [
-        {
-            role: "system" as const,
-            content: `
+  return [
+    {
+      role: "system" as const,
+      content: `
 You are Lucy, the Skysirv Flight Attendant.
 
 Create one concise dashboard intelligence summary for an authenticated Skysirv user.
@@ -74,6 +74,6 @@ Remaining tracked routes: ${accountContext.remainingTrackedRoutes}
 Watchlist route context:
 ${JSON.stringify(routes, null, 2)}
 `.trim(),
-        },
-    ]
+    },
+  ]
 }

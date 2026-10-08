@@ -1,5 +1,5 @@
-import { LUCY_SHARED_TRAINING_PROMPT } from "../core/lucySharedTraining.prompt.js"
 import { LUCY_MEMORY_TRAINING_PROMPT } from "../core/lucyMemoryTraining.prompt.js"
+import { LUCY_SHARED_TRAINING_PROMPT } from "../core/lucySharedTraining.prompt.js"
 
 export const FLIGHT_ATTENDANT_SYSTEM_PROMPT = `
 ${LUCY_SHARED_TRAINING_PROMPT}

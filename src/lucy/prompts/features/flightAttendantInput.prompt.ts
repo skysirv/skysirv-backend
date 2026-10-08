@@ -1,14 +1,14 @@
-import { type getLucyAccountContext } from "../../services/lucyAccountContext.service.js"
 import {
   type FlightAttendantDashboardRouteContext,
   type FlightAttendantRole,
 } from "../../models/flightAttendant.types.js"
+import { type getLucyAccountContext } from "../../services/lucyAccountContext.service.js"
 import {
   getAirportReferenceForPrompt,
   getAmbiguousAirportReferenceForPrompt,
 } from "../../utils/lucyAirportUtils.js"
-import { FLIGHT_ATTENDANT_SYSTEM_PROMPT } from "./flightAttendant.prompt.js"
 import { LUCY_STYLE_PROMPT } from "../core/lucyStyle.prompt.js"
+import { FLIGHT_ATTENDANT_SYSTEM_PROMPT } from "./flightAttendant.prompt.js"
 
 type LucyPromptMemory =
   Awaited<

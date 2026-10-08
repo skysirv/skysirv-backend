@@ -1,10 +1,10 @@
+import { type FlightAttendantDashboardRouteContext } from "../models/flightAttendant.types.js"
 import {
   LUCY_REALTIME_MODEL,
   LUCY_REALTIME_VOICE,
 } from "../models/lucyRealtime.config.js"
-import { type FlightAttendantDashboardRouteContext } from "../models/flightAttendant.types.js"
-import { type getLucyAccountContext } from "./lucyAccountContext.service.js"
 import { buildLucyRealtimeInstructions } from "../prompts/features/lucyRealtime.prompt.js"
+import { type getLucyAccountContext } from "./lucyAccountContext.service.js"
 import { getLucyRealtimeTools } from "./lucyRealtimeTools.service.js"
 
 export async function createLucyRealtimeClientSecret({
@@ -12,6 +12,8 @@ export async function createLucyRealtimeClientSecret({
   accountContext,
   watchlistForRealtime,
   conversationHistory,
+  clientLocalDateTime,
+  clientTimeZone,
 }: {
   userId: string
   accountContext: Awaited<ReturnType<typeof getLucyAccountContext>>
@@ -20,6 +22,8 @@ export async function createLucyRealtimeClientSecret({
     role: "user" | "assistant"
     content: string
   }>
+  clientLocalDateTime: string | null
+  clientTimeZone: string | null
 }) {
   const openaiResponse = await fetch(
     "https://api.openai.com/v1/realtime/client_secrets",
@@ -38,6 +42,8 @@ export async function createLucyRealtimeClientSecret({
             accountContext,
             watchlistForRealtime,
             conversationHistory,
+            clientLocalDateTime,
+            clientTimeZone,
           ),
           tools: getLucyRealtimeTools(),
           tool_choice: "auto",
