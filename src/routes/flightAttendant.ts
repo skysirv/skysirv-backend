@@ -465,6 +465,27 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
         })
       }
 
+      request.log.info(
+        {
+          tripType,
+          origin,
+          destination,
+          departureDate,
+          returnDate,
+          cabinClass,
+          departurePeriod,
+          airlineIataCode:
+            typeof body.airlineIataCode === "string"
+              ? body.airlineIataCode.trim().toUpperCase()
+              : null,
+          maxConnections:
+            typeof body.maxConnections === "number"
+              ? body.maxConnections
+              : 1,
+        },
+        "Lucy live flight search requested"
+      )
+
       try {
         const result = await searchLucyFlights({
           tripType,
@@ -499,6 +520,26 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
               ? body.maxResults
               : 5,
         })
+
+        request.log.info(
+          {
+            provider: result.provider,
+            liveMode: result.liveMode,
+            offerCount: result.offers.length,
+            airlines: Array.from(
+              new Set(
+                result.offers
+                  .map((offer) => offer.airlineIataCode)
+                  .filter(
+                    (code): code is string =>
+                      typeof code === "string" &&
+                      Boolean(code)
+                  )
+              )
+            ),
+          },
+          "Lucy live flight search completed"
+        )
 
         return {
           success: true,
