@@ -264,23 +264,6 @@ export async function resolveLucyMemorySubject({
     return identityMatches[0]
   }
 
-  if (
-    relationshipLabel &&
-    subjectType === "person"
-  ) {
-    const relationshipMatches =
-      subjects.filter(
-        (existingSubject) =>
-          cleanRelationshipLabel(
-            existingSubject.relationship_label
-          ) === relationshipLabel
-      )
-
-    if (relationshipMatches.length === 1) {
-      return relationshipMatches[0]
-    }
-  }
-
   const now = new Date()
 
   const createdSubject = await app.db
