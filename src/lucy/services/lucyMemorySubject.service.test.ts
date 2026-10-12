@@ -124,4 +124,58 @@ describe("Lucy memory subject identity", () => {
     expect(createdSubjects).toHaveLength(1)
     expect(createdSubjects[0].subject_key).toBe("sofia")
   })
+
+  it("does not merge different people sharing a first-name alias", async () => {
+    const existingSubjects = [
+      {
+        id: "alex-morgan-id",
+        user_id: "test-user",
+        subject_type: "person",
+        subject_key: "alex_morgan",
+        display_name: "Alex Morgan",
+        relationship_label: "coworker",
+        aliases: ["Alex Morgan", "Alex"],
+        status: "active",
+      },
+    ]
+
+    const createdSubjects: any[] = []
+
+    const mockDb = {
+      selectFrom: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        execute: vi.fn().mockResolvedValue(existingSubjects),
+      })),
+      insertInto: vi.fn(() => ({
+        values: vi.fn((value) => {
+          createdSubjects.push(value)
+          return {
+            onConflict: vi.fn(() => ({
+              returning: vi.fn(() => ({
+                executeTakeFirst: vi.fn().mockResolvedValue(value),
+              })),
+            })),
+          }
+        }),
+      })),
+    }
+
+    const result = await resolveLucyMemorySubject({
+      app: { db: mockDb } as any,
+      userId: "test-user",
+      subject: {
+        subjectType: "person",
+        subjectKey: "alex_rivera",
+        displayName: "Alex Rivera",
+        relationshipLabel: "friend",
+        aliases: ["Alex Rivera", "Alex"],
+      },
+    })
+
+    expect(result.subject_key).toBe("alex_rivera")
+    expect(result.id).not.toBe("alex-morgan-id")
+    expect(createdSubjects).toHaveLength(1)
+    expect(createdSubjects[0].subject_key).toBe("alex_rivera")
+  })
 })
