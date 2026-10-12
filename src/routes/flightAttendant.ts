@@ -996,44 +996,95 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
             response.output_text
           )
 
-      if (
-        lucyResponse.action?.type ===
-        "save_lucy_memory"
-      ) {
-        const memoryAction =
-          lucyResponse.action
 
-        await executeLucyMemoryCommand({
-          app,
-          userId: user.id,
-          candidate: {
-            subject: memoryAction.subject,
-            memoryType: isLucyMemoryType(
-              memoryAction.memoryType
+      const singleMemoryAction =
+        lucyResponse.action?.type === "save_lucy_memory"
+          ? lucyResponse.action
+          : null
+
+      const memoryActions = [
+        ...(singleMemoryAction ? [singleMemoryAction] : []),
+        ...(lucyResponse.memoryActions ?? []),
+      ]
+
+      const uniqueMemoryActions = Array.from(
+        new Map(
+          memoryActions.map((action) => [
+            [
+              action.subject?.subjectType ?? "self",
+              action.subject?.subjectKey ?? "self",
+              action.memoryType,
+              action.memoryKey,
+            ].join(":"),
+            action,
+          ])
+        ).values()
+      ).slice(0, 5)
+
+      if (uniqueMemoryActions.length > 0) {
+        let savedCount = 0
+
+        for (const memoryAction of uniqueMemoryActions) {
+          try {
+            await executeLucyMemoryCommand({
+              app,
+              userId: user.id,
+              candidate: {
+                subject: memoryAction.subject,
+                memoryType: isLucyMemoryType(
+                  memoryAction.memoryType
+                )
+                  ? memoryAction.memoryType
+                  : "general_travel_note",
+                memoryKey: memoryAction.memoryKey,
+                memoryText: memoryAction.memoryText,
+                memoryValueJson:
+                  memoryAction.memoryValueJson ?? null,
+                confidence: "confirmed",
+                source: "conversational",
+                channel: "text",
+                sourceConversationId: conversationId,
+                sourceMessageId: sourceUserMessageId,
+              },
+            })
+
+            savedCount++
+          } catch (error) {
+            request.log.error(
+              {
+                error,
+                memoryKey: memoryAction.memoryKey,
+              },
+              "Lucy memory action failed"
             )
-              ? memoryAction.memoryType
-              : "general_travel_note",
-            memoryKey: memoryAction.memoryKey,
-            memoryText: memoryAction.memoryText,
-            memoryValueJson:
-              memoryAction.memoryValueJson ?? null,
-            confidence: "confirmed",
-            source: "conversational",
-            channel: "text",
-            sourceConversationId: conversationId,
-            sourceMessageId: sourceUserMessageId,
-          },
-        })
+          }
+        }
 
-        await saveAssistantReply(
-          lucyResponse.reply
-        )
+        const allSaved =
+          savedCount === uniqueMemoryActions.length
+
+        const finalReply = allSaved
+          ? lucyResponse.reply
+          : savedCount === 0
+            ? "I understood what you'd like me to remember, but I couldn't save it right now. Please try again."
+            : `I saved ${savedCount} of ${uniqueMemoryActions.length} memories. Some details couldn't be saved, so please try those again.`
+
+        await saveAssistantReply(finalReply)
+
 
         return {
           success: true,
           model,
-          reply: lucyResponse.reply,
-          action: null,
+          reply: finalReply,
+          action:
+            lucyResponse.action?.type === "save_lucy_memory"
+              ? null
+              : lucyResponse.action,
+          memorySaveResult: {
+            attempted: uniqueMemoryActions.length,
+            saved: savedCount,
+            failed: uniqueMemoryActions.length - savedCount,
+          },
           conversationId,
         }
       }

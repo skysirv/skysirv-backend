@@ -1,7 +1,11 @@
 import { zodTextFormat } from "openai/helpers/zod"
 import { z } from "zod"
 
-import { cleanLucySuggestedAction } from "../actions/lucyActionSanitizer.js"
+import {
+  cleanLucySaveMemoryAction,
+  cleanLucySuggestedAction,
+} from "../actions/lucyActionSanitizer.js"
+
 import { type LucyStructuredChatResponse } from "../models/lucyActions.types.js"
 
 const LucyMemorySubjectSchema = z.object({
@@ -90,7 +94,9 @@ export const LucyStructuredResponseSchema =
   z.object({
     reply: z.string(),
     action: LucyStructuredActionSchema.nullable(),
+    memoryActions: z.array(LucySaveMemoryActionSchema).max(5),
   })
+
 
 export const LUCY_STRUCTURED_RESPONSE_FORMAT =
   zodTextFormat(
@@ -98,17 +104,23 @@ export const LUCY_STRUCTURED_RESPONSE_FORMAT =
     "lucy_structured_chat_response"
   )
 
+
 export function parseLucyStructuredChatResponseValue(
   value: unknown
 ): LucyStructuredChatResponse {
-  const parsed =
-    LucyStructuredResponseSchema.parse(value)
+  const parsed = LucyStructuredResponseSchema.parse(value)
+
+  const memoryActions = parsed.memoryActions
+    .map((action) => cleanLucySaveMemoryAction(action))
+    .filter(
+      (action): action is NonNullable<typeof action> =>
+        action !== null
+    )
 
   return {
     reply: parsed.reply.trim().slice(0, 1800),
-    action: cleanLucySuggestedAction(
-      parsed.action
-    ),
+    action: cleanLucySuggestedAction(parsed.action),
+    memoryActions,
   }
 }
 
@@ -137,13 +149,25 @@ export function parseLucyStructuredChatResponse(
     }
   }
 
+
   const input = parsedFromBlock as {
     reply?: unknown
     response?: unknown
     answer?: unknown
     action?: unknown
     suggestedAction?: unknown
+    memoryActions?: unknown
   }
+
+  const memoryActions = Array.isArray(input.memoryActions)
+    ? input.memoryActions
+      .slice(0, 5)
+      .map((action) => cleanLucySaveMemoryAction(action))
+      .filter(
+        (action): action is NonNullable<typeof action> =>
+          action !== null
+      )
+    : []
 
   if (
     typeof input.reply !== "string" &&
@@ -183,8 +207,12 @@ export function parseLucyStructuredChatResponse(
 
   const reply = replyCandidate.trim().slice(0, 1800)
 
+
   return {
     reply,
-    action: cleanLucySuggestedAction(input.action ?? input.suggestedAction),
+    action: cleanLucySuggestedAction(
+      input.action ?? input.suggestedAction
+    ),
+    memoryActions,
   }
 }
