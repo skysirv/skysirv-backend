@@ -70,7 +70,9 @@ export type LucySuggestedAction =
   | LucySaveVisibleFlightAction
   | LucySaveMemoryAction
 
+
 export type LucyStructuredChatResponse = {
   reply: string
   action: LucySuggestedAction | null
+  memoryActions?: LucySaveMemoryAction[]
 }

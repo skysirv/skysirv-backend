@@ -14,7 +14,6 @@
     "db:seed:history": "tsx scripts/seedHistory.ts"
   },
   "dependencies": {
-    "@duffel/api": "^4.21.5",
     "@fastify/cors": "^10.1.0",
     "@fastify/jwt": "^10.0.0",
     "@fastify/rate-limit": "^10.3.0",

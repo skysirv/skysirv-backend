@@ -2,7 +2,7 @@ import { Queue, Worker } from "bullmq"
 import { QUEUE_NAMES, getEmailQueue } from "../infra/queues.js"
 import { db } from "../db/kysely.js"
 import { monitorRoute } from "../monitor/monitorRoute.js"
-import { DuffelAdapter } from "../providers/duffelAdapter.js"
+import { RouteStackAdapter } from "../providers/routestackAdapter.js"
 import { env } from "../config/env.js"
 import { sendAlertEmail } from "../services/notificationService.js"
 import { AmadeusAdapter } from "../providers/amadeusAdapter.js"
@@ -278,7 +278,7 @@ function getDashboardUrlForPlan(planName?: string | null): string {
 }
 
 export function startWorkers() {
-  const providers = [new DuffelAdapter(), new AmadeusAdapter()]
+  const providers = [new RouteStackAdapter(), new AmadeusAdapter()]
 
   /*
   --------------------------------

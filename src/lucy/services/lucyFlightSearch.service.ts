@@ -127,7 +127,6 @@ export async function searchLucyFlights(
     input.departurePeriod ?? "any"
 
   const result = await searchBookingOffers({
-    provider: "duffel",
     tripType: input.tripType,
     origin: input.origin,
     destination: input.destination,

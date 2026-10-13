@@ -1,11 +1,8 @@
 type AirlineBranding = {
   name: string
-  logoSymbolUrl: string
-  logoLockupUrl: string
+  logoSymbolUrl: string | null
+  logoLockupUrl: string | null
 }
-
-const DUFFEL_LOGO_BASE =
-  "https://assets.duffel.com/img/airlines/for-light-background"
 
 const airlineNamesByCode: Record<string, string> = {
   AA: "American Airlines",
@@ -36,26 +33,34 @@ const airlineNamesByCode: Record<string, string> = {
   VS: "Virgin Atlantic",
 }
 
-function normalizeAirlineCode(value?: string | null): string | null {
+function normalizeAirlineCode(
+  value?: string | null,
+): string | null {
   const code = value?.trim().toUpperCase()
 
   return code || null
 }
 
 export function getFallbackAirlineBranding(
-  airlineCode?: string | null
+  airlineCode?: string | null,
 ): AirlineBranding | null {
-  const code = normalizeAirlineCode(airlineCode)
+  const code =
+    normalizeAirlineCode(airlineCode)
 
-  if (!code) return null
+  if (!code) {
+    return null
+  }
 
-  const name = airlineNamesByCode[code]
+  const name =
+    airlineNamesByCode[code]
 
-  if (!name) return null
+  if (!name) {
+    return null
+  }
 
   return {
     name,
-    logoSymbolUrl: `${DUFFEL_LOGO_BASE}/full-color-logo/${code}.svg`,
-    logoLockupUrl: `${DUFFEL_LOGO_BASE}/full-color-lockup/${code}.svg`,
+    logoSymbolUrl: null,
+    logoLockupUrl: null,
   }
 }

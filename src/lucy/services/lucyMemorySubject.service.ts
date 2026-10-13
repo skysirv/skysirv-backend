@@ -228,58 +228,10 @@ export async function resolveLucyMemorySubject({
     return exactKeyMatch
   }
 
-  const candidateIdentityValues = new Set(
-    [
-      displayName,
-      subjectKey.replace(/_/g, " "),
-      ...aliases,
-    ]
-      .map(normalizeComparisonValue)
-      .filter(Boolean)
-  )
-
-  const identityMatches = subjects.filter(
-    (existingSubject) => {
-      const existingIdentityValues = [
-        existingSubject.display_name,
-        existingSubject.subject_key.replace(
-          /_/g,
-          " "
-        ),
-        ...getStoredAliases(
-          existingSubject.aliases
-        ),
-      ]
-        .map(normalizeComparisonValue)
-        .filter(Boolean)
-
-      return existingIdentityValues.some(
-        (value) =>
-          candidateIdentityValues.has(value)
-      )
-    }
-  )
-
-  if (identityMatches.length === 1) {
-    return identityMatches[0]
-  }
-
-  if (
-    relationshipLabel &&
-    subjectType === "person"
-  ) {
-    const relationshipMatches =
-      subjects.filter(
-        (existingSubject) =>
-          cleanRelationshipLabel(
-            existingSubject.relationship_label
-          ) === relationshipLabel
-      )
-
-    if (relationshipMatches.length === 1) {
-      return relationshipMatches[0]
-    }
-  }
+  // Resolve exact canonical subject keys above this block.
+  // Do not merge distinct subject keys based on shared names or aliases.
+  // Names and aliases are useful conversational hints, but are not
+  // sufficient evidence to overwrite an existing person's identity.
 
   const now = new Date()
 

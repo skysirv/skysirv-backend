@@ -459,6 +459,8 @@ export async function authRoutes(app: FastifyInstance) {
 
     const valid = await bcrypt.compare(password, user.password)
 
+    console.log("STAGING LOGIN PASSWORD MATCH:", valid)
+
     if (!valid) {
       return reply.status(401).send({
         error: "Invalid credentials"

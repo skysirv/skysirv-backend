@@ -43,9 +43,12 @@ const envSchema = z
 
     MAPBOX_ACCESS_TOKEN: z.string().min(1),
 
-    DUFFEL_ACCESS_TOKEN: z.string().min(1),
-    DUFFEL_API_BASE_URL: z.string().url().default("https://api.duffel.com"),
-    DUFFEL_API_VERSION: z.string().default("v2"),
+    ROUTESTACK_BASE_URL: z
+      .string()
+      .url()
+      .default("https://mcp.routestack.ai"),
+    ROUTESTACK_API_KEY: z.string().min(1),
+    ROUTESTACK_API_SECRET: z.string().min(1),
 
     CIRIUM_ENABLED: envBoolean,
     CIRIUM_LIVE_AIRCRAFT_ENABLED: envBoolean,
@@ -82,7 +85,7 @@ const envSchema = z
         "FRONTEND_BASE_URL",
         "STRIPE_SUCCESS_URL",
         "STRIPE_CANCEL_URL",
-        "DUFFEL_API_BASE_URL",
+        "ROUTESTACK_BASE_URL",
       ] as const
 
       for (const field of productionUrlFields) {
