@@ -15,7 +15,6 @@ const bookingLegSchema = z.object({
 
 const bookingSearchSchema = z
   .object({
-    provider: z.enum(["duffel"]).optional().default("duffel"),
     tripType: z.enum(["one_way", "round_trip", "multi_city"]).default("one_way"),
     origin: z.string().trim().length(3).optional(),
     destination: z.string().trim().length(3).optional(),
@@ -122,7 +121,6 @@ export async function bookingRoutes(app: FastifyInstance) {
 
     try {
       const result = await searchBookingOffers({
-        provider: body.provider,
         tripType: body.tripType,
         origin: body.origin ? normalizeCode(body.origin) : undefined,
         destination: body.destination

@@ -1,4 +1,4 @@
-export type BookingProvider = "duffel"
+export type BookingProvider = "routestack"
 
 export type BookingTripType = "one_way" | "round_trip" | "multi_city"
 

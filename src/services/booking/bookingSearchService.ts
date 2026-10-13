@@ -1,4 +1,5 @@
-import { searchDuffelOffers } from "./providers/duffelProvider.js"
+import { searchRouteStackBookingOffers } from "./providers/routestackProvider.js"
+
 import type {
   BookingSearchInput,
   BookingSearchSlice,
@@ -47,8 +48,6 @@ function buildSearchSlices(input: BookingSearchInput): BookingSearchSlice[] {
 export async function searchBookingOffers(
   input: BookingSearchInput
 ): Promise<BookingSearchResult> {
-  const provider = input.provider ?? "duffel"
-
   const providerInput: ProviderSearchInput = {
     slices: buildSearchSlices(input),
     adults: input.adults,
@@ -58,9 +57,5 @@ export async function searchBookingOffers(
     maxConnections: input.maxConnections,
   }
 
-  if (provider === "duffel") {
-    return searchDuffelOffers(providerInput)
-  }
-
-  throw new Error(`Unsupported booking provider: ${provider}`)
+  return searchRouteStackBookingOffers(providerInput)
 }
