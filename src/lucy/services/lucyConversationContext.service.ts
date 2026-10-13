@@ -45,6 +45,17 @@ function normalizeSearchTokens(value: string) {
           "previous",
           "earlier",
           "remember",
+          "trip",
+          "travel",
+          "traveling",
+          "planning",
+          "message",
+          "said",
+          "tell",
+          "told",
+          "last",
+          "recent",
+          "lucy",
         ].includes(token)
     )
 }
@@ -66,7 +77,9 @@ function scoreConversationContext({
 
   const searchableText = [
     title || "",
-    ...messages.map((message) => message.content),
+    ...messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.content),
   ]
     .join(" ")
     .toLowerCase()
@@ -105,6 +118,9 @@ export async function getRelevantRecentConversationContext({
       (conversation) =>
         conversation.id !== currentConversationId
     )
+
+  const hasSpecificQueryTerms =
+    normalizeSearchTokens(query).length > 0
 
   const contexts =
     await Promise.all(
@@ -148,7 +164,8 @@ export async function getRelevantRecentConversationContext({
   return contexts
     .filter(
       (context) =>
-        context.messages.length > 0
+        context.messages.length > 0 &&
+        (!hasSpecificQueryTerms || context.relevanceScore > 0)
     )
     .sort((a, b) => {
       if (

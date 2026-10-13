@@ -58,11 +58,17 @@ export function buildLucyRealtimeInstructions(
     conversationHistory.length > 0
       ? conversationHistory
         .map(
-          (message) =>
-            `${message.role === "user" ? "Traveler" : "Lucy"}: ${message.content}`
+          (message, index) =>
+            `[${index + 1}] ${message.role === "user" ? "Traveler" : "Lucy"}: ${message.content}`
         )
         .join("\n")
       : "No persisted conversation history is available for this thread."
+
+  const latestPersistedTravelerMessage =
+    [...conversationHistory]
+      .reverse()
+      .find((message) => message.role === "user")
+      ?.content ?? null
   return `
 ${LUCY_SHARED_TRAINING_PROMPT}
 
@@ -128,9 +134,22 @@ When current or provider-specific information is unavailable, say so briefly and
 
 Keep voice responses conversational, direct, and useful.
 
-Persisted active Lucy conversation:
+Persisted active Lucy conversation (oldest first; numbered in chronological order):
 
 ${persistedConversationContext}
+
+Latest persisted traveler message in THIS active thread (not a previous thread):
+${JSON.stringify(latestPersistedTravelerMessage)}
+
+Active-thread evidence rules (highest priority for questions about what was said):
+- "What did I just say?", "what was my last text message?", "where did I just say I wanted to go?", and similar questions refer to THIS active thread unless the traveler explicitly names another thread.
+- For questions about the most recent TEXT message, use the most recent traveler message in the persisted active conversation at voice-session start. If the current voice session includes a newer text message, use that instead.
+- For questions about the most recent message without a modality qualifier, prefer the latest traveler utterance in the live session, then the latest traveler message in the active persisted thread.
+- The exact words of a traveler message are evidence. Lucy's earlier replies are NOT evidence of what the traveler said. Never attribute an assistant's words to the traveler.
+- If asked to repeat an exact statement, quote only the actual traveler message. Do not add details from memory, an older thread, or an assistant response.
+- Never use retrieve_recent_conversation_context to answer what the traveler "just" said or typed in this active thread. Use that tool only when the traveler clearly requests ANOTHER conversation.
+- If the relevant message is absent from the active history, acknowledge that you cannot verify its exact wording. Never substitute a plausible older message.
+- Historical conversation tool results and persistent memories are lower-priority background evidence. They cannot overwrite an explicit traveler statement in this active thread.
 
 Conversation context rules:
 
