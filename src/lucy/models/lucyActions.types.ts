@@ -62,7 +62,63 @@ export type LucySaveMemoryAction = {
   confirmationPrompt: string
 }
 
+export type LucySearchFlightsAction = {
+  type: "search_flights"
+  status: "ready"
+  tripType: "one_way" | "round_trip"
+  origin: string
+  destination: string
+  departureDate: string
+  returnDate: string | null
+  adults: number
+  children: number
+  infants: number
+  cabinClass:
+  | "economy"
+  | "premium_economy"
+  | "business"
+  | "first"
+  maxConnections: number
+  airlineIataCode: string | null
+  departurePeriod:
+  | "early_morning"
+  | "morning"
+  | "afternoon"
+  | "evening"
+  | "any"
+  maxResults: number
+}
+
+export type LucySearchHotelsAction = {
+  type: "search_hotels"
+  status: "ready"
+  destination: string
+  checkInDate: string
+  checkOutDate: string
+  adults: number
+  childAges: number[]
+  rooms: number
+  freeCancellationOnly: boolean
+  maxResults: number
+}
+
+export type LucySearchCarsAction = {
+  type: "search_cars"
+  status: "ready"
+  pickupLocation: string
+  dropoffLocation: string
+  pickupDate: string
+  dropoffDate: string
+  pickupTime: string
+  dropoffTime: string
+  driverAge: number | null
+  maxResults: number
+}
+
 export type LucySuggestedAction =
+  | LucySearchFlightsAction
+  | LucySearchHotelsAction
+  | LucySearchCarsAction
   | LucyWatchlistAction
   | LucyPreferredAirportsAction
   | LucyPreferredRouteAction

@@ -80,8 +80,69 @@ const LucySaveMemoryActionSchema = z.object({
   confirmationPrompt: z.string(),
 })
 
+const LucySearchFlightsActionSchema = z.object({
+  type: z.literal("search_flights"),
+  status: z.literal("ready"),
+  tripType: z.enum([
+    "one_way",
+    "round_trip",
+  ]),
+  origin: z.string(),
+  destination: z.string(),
+  departureDate: z.string(),
+  returnDate: z.string().nullable(),
+  adults: z.number(),
+  children: z.number(),
+  infants: z.number(),
+  cabinClass: z.enum([
+    "economy",
+    "premium_economy",
+    "business",
+    "first",
+  ]),
+  maxConnections: z.number(),
+  airlineIataCode: z.string().nullable(),
+  departurePeriod: z.enum([
+    "early_morning",
+    "morning",
+    "afternoon",
+    "evening",
+    "any",
+  ]),
+  maxResults: z.number(),
+})
+
+const LucySearchHotelsActionSchema = z.object({
+  type: z.literal("search_hotels"),
+  status: z.literal("ready"),
+  destination: z.string(),
+  checkInDate: z.string(),
+  checkOutDate: z.string(),
+  adults: z.number(),
+  childAges: z.array(z.number()),
+  rooms: z.number(),
+  freeCancellationOnly: z.boolean(),
+  maxResults: z.number(),
+})
+
+const LucySearchCarsActionSchema = z.object({
+  type: z.literal("search_cars"),
+  status: z.literal("ready"),
+  pickupLocation: z.string(),
+  dropoffLocation: z.string(),
+  pickupDate: z.string(),
+  dropoffDate: z.string(),
+  pickupTime: z.string(),
+  dropoffTime: z.string(),
+  driverAge: z.number().nullable(),
+  maxResults: z.number(),
+})
+
 const LucyStructuredActionSchema =
   z.discriminatedUnion("type", [
+    LucySearchFlightsActionSchema,
+    LucySearchHotelsActionSchema,
+    LucySearchCarsActionSchema,
     LucyWatchlistActionSchema,
     LucyPreferredAirportsActionSchema,
     LucyPreferredRouteActionSchema,

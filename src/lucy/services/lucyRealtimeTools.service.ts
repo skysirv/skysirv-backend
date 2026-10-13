@@ -82,12 +82,12 @@ export function getLucyRealtimeTools() {
           departureDate: {
             type: "string",
             description:
-              "Departure date in YYYY-MM-DD format.",
+              "Departure date in MM-DD-YYYY format.",
           },
           returnDate: {
             type: ["string", "null"],
             description:
-              "Return date in YYYY-MM-DD format for round trips. Use null for one-way trips.",
+              "Return date in MM-DD-YYYY format for round trips. Use null for one-way trips.",
           },
           adults: {
             type: "integer",
@@ -158,6 +158,141 @@ export function getLucyRealtimeTools() {
           "maxConnections",
           "airlineIataCode",
           "departurePeriod",
+          "maxResults",
+        ],
+      },
+    },
+    {
+      type: "function",
+      name: "search_hotels",
+      description:
+        "Search live Skysirv hotel inventory through the connected hotel provider. Use this whenever the traveler asks Lucy to find, search, compare, recommend, price, or check availability for hotels. Never guess live hotel prices, availability, ratings, cancellation terms, or amenities when this tool can answer the request. Only call the tool once destination, check-in date, and check-out date are clear. If required search details are missing, ask one short clarification question first.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          destination: {
+            type: "string",
+            description:
+              "City, destination, neighborhood, landmark, or hotel area the traveler wants to search.",
+          },
+          checkInDate: {
+            type: "string",
+            description:
+              "Hotel check-in date in MM-DD-YYYY format.",
+          },
+          checkOutDate: {
+            type: "string",
+            description:
+              "Hotel check-out date in MM-DD-YYYY format.",
+          },
+          adults: {
+            type: "integer",
+            minimum: 1,
+            maximum: 18,
+          },
+          childAges: {
+            type: "array",
+            items: {
+              type: "integer",
+              minimum: 0,
+              maximum: 17,
+            },
+            description:
+              "Ages of child travelers. Use an empty array when there are no children or ages are not provided.",
+          },
+          rooms: {
+            type: "integer",
+            minimum: 1,
+            maximum: 8,
+          },
+          freeCancellationOnly: {
+            type: "boolean",
+            description:
+              "Set true when the traveler explicitly requests refundable or free-cancellation hotel options.",
+          },
+          maxResults: {
+            type: "integer",
+            minimum: 1,
+            maximum: 8,
+            description:
+              "Maximum number of matching hotel results Lucy needs. Usually use 5.",
+          },
+        },
+        required: [
+          "destination",
+          "checkInDate",
+          "checkOutDate",
+          "adults",
+          "childAges",
+          "rooms",
+          "freeCancellationOnly",
+          "maxResults",
+        ],
+      },
+    },
+    {
+      type: "function",
+      name: "search_cars",
+      description:
+        "Search live Skysirv rental-car inventory through the connected car provider. Use this whenever the traveler asks Lucy to find, search, compare, recommend, price, or check availability for rental cars. Never guess live rental suppliers, vehicle options, rates, cancellation terms, mileage rules, or availability when this tool can answer the request. Only call the tool once pickup location, pickup date, and dropoff date are clear. If the traveler does not specify a different dropoff location, use the pickup location.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          pickupLocation: {
+            type: "string",
+            description:
+              "Pickup location, such as Miami International Airport or MIA.",
+          },
+          dropoffLocation: {
+            type: "string",
+            description:
+              "Dropoff location. Use the pickup location when the traveler does not specify a different dropoff point.",
+          },
+          pickupDate: {
+            type: "string",
+            description:
+              "Rental pickup date in MM-DD-YYYY format.",
+          },
+          dropoffDate: {
+            type: "string",
+            description:
+              "Rental dropoff date in MM-DD-YYYY format.",
+          },
+          pickupTime: {
+            type: "string",
+            description:
+              "Pickup time in 24-hour HH:MM format. Use 10:00 when unspecified.",
+          },
+          dropoffTime: {
+            type: "string",
+            description:
+              "Dropoff time in 24-hour HH:MM format. Use 10:00 when unspecified.",
+          },
+          driverAge: {
+            type: ["integer", "null"],
+            minimum: 18,
+            maximum: 99,
+            description:
+              "Driver age when known. Use null when the traveler has not provided it.",
+          },
+          maxResults: {
+            type: "integer",
+            minimum: 1,
+            maximum: 8,
+            description:
+              "Maximum number of matching rental-car results Lucy needs. Usually use 5.",
+          },
+        },
+        required: [
+          "pickupLocation",
+          "dropoffLocation",
+          "pickupDate",
+          "dropoffDate",
+          "pickupTime",
+          "dropoffTime",
+          "driverAge",
           "maxResults",
         ],
       },

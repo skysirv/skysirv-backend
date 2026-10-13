@@ -97,6 +97,18 @@ import {
   searchLucyFlights,
 } from "../lucy/services/lucyFlightSearch.service.js"
 
+import {
+  searchLucyHotels,
+} from "../lucy/services/lucyHotelSearch.service.js"
+
+import {
+  searchLucyCars,
+} from "../lucy/services/lucyCarSearch.service.js"
+
+import {
+  cleanDepartureDate,
+} from "../lucy/utils/lucyDateUtils.js"
+
 export async function flightAttendantRoutes(app: FastifyInstance) {
   app.post(
     "/flight-attendant/memories",
@@ -562,6 +574,276 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
   )
 
   app.post(
+    "/flight-attendant/hotels/search",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const body =
+        (request.body || {}) as {
+          destination?: unknown
+          checkInDate?: unknown
+          checkOutDate?: unknown
+          adults?: unknown
+          childAges?: unknown
+          rooms?: unknown
+          freeCancellationOnly?: unknown
+          maxResults?: unknown
+        }
+
+      const destination =
+        typeof body.destination === "string"
+          ? body.destination
+            .trim()
+            .replace(/\s+/g, " ")
+          : ""
+
+      const checkInDate =
+        cleanDepartureDate(
+          body.checkInDate,
+        )
+
+      const checkOutDate =
+        cleanDepartureDate(
+          body.checkOutDate,
+        )
+
+      if (
+        !destination ||
+        !checkInDate ||
+        !checkOutDate
+      ) {
+        return reply
+          .status(400)
+          .send({
+            success: false,
+            error:
+              "Destination, check-in date, and check-out date are required.",
+            hotels: [],
+          })
+      }
+
+      if (
+        checkOutDate <= checkInDate
+      ) {
+        return reply
+          .status(400)
+          .send({
+            success: false,
+            error:
+              "Hotel check-out date must be after the check-in date.",
+            hotels: [],
+          })
+      }
+
+      try {
+        const result =
+          await searchLucyHotels({
+            destination,
+            checkInDate,
+            checkOutDate,
+
+            adults:
+              typeof body.adults ===
+                "number"
+                ? body.adults
+                : 1,
+
+            childAges:
+              Array.isArray(
+                body.childAges,
+              )
+                ? body.childAges.filter(
+                  (
+                    age,
+                  ): age is number =>
+                    typeof age ===
+                    "number" &&
+                    Number.isFinite(
+                      age,
+                    ),
+                )
+                : [],
+
+            rooms:
+              typeof body.rooms ===
+                "number"
+                ? body.rooms
+                : 1,
+
+            freeCancellationOnly:
+              body.freeCancellationOnly ===
+              true,
+
+            maxResults:
+              typeof body.maxResults ===
+                "number"
+                ? body.maxResults
+                : 5,
+          })
+
+        return {
+          success: true,
+          ...result,
+        }
+      } catch (error) {
+        request.log.error(
+          { error },
+          "Lucy realtime hotel search failed",
+        )
+
+        return reply
+          .status(502)
+          .send({
+            success: false,
+            error:
+              "Lucy could not complete the live hotel search right now.",
+            hotels: [],
+          })
+      }
+    },
+  )
+
+  app.post(
+    "/flight-attendant/cars/search",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const body =
+        (request.body || {}) as {
+          pickupLocation?: unknown
+          dropoffLocation?: unknown
+          pickupDate?: unknown
+          dropoffDate?: unknown
+          pickupTime?: unknown
+          dropoffTime?: unknown
+          driverAge?: unknown
+          maxResults?: unknown
+        }
+
+      const pickupLocation =
+        typeof body.pickupLocation ===
+          "string"
+          ? body.pickupLocation
+            .trim()
+            .replace(/\s+/g, " ")
+          : ""
+
+      const dropoffLocation =
+        typeof body.dropoffLocation ===
+          "string"
+          ? body.dropoffLocation
+            .trim()
+            .replace(/\s+/g, " ")
+          : pickupLocation
+
+      const pickupDate =
+        cleanDepartureDate(
+          body.pickupDate,
+        )
+
+      const dropoffDate =
+        cleanDepartureDate(
+          body.dropoffDate,
+        )
+
+      const pickupTime =
+        typeof body.pickupTime ===
+          "string" &&
+          /^([01]\d|2[0-3]):[0-5]\d$/.test(
+            body.pickupTime.trim(),
+          )
+          ? body.pickupTime.trim()
+          : "10:00"
+
+      const dropoffTime =
+        typeof body.dropoffTime ===
+          "string" &&
+          /^([01]\d|2[0-3]):[0-5]\d$/.test(
+            body.dropoffTime.trim(),
+          )
+          ? body.dropoffTime.trim()
+          : "10:00"
+
+      if (
+        !pickupLocation ||
+        !dropoffLocation ||
+        !pickupDate ||
+        !dropoffDate
+      ) {
+        return reply
+          .status(400)
+          .send({
+            success: false,
+            error:
+              "Pickup location, pickup date, and dropoff date are required.",
+            cars: [],
+          })
+      }
+
+      if (
+        dropoffDate < pickupDate
+      ) {
+        return reply
+          .status(400)
+          .send({
+            success: false,
+            error:
+              "Car dropoff date cannot be before pickup date.",
+            cars: [],
+          })
+      }
+
+      try {
+        const result =
+          await searchLucyCars({
+            pickupLocation,
+            dropoffLocation,
+            pickupDate,
+            dropoffDate,
+            pickupTime,
+            dropoffTime,
+
+            driverAge:
+              typeof body.driverAge ===
+                "number" &&
+                Number.isFinite(
+                  body.driverAge,
+                )
+                ? body.driverAge
+                : null,
+
+            maxResults:
+              typeof body.maxResults ===
+                "number"
+                ? body.maxResults
+                : 5,
+          })
+
+        return {
+          success: true,
+          ...result,
+        }
+      } catch (error) {
+        request.log.error(
+          { error },
+          "Lucy realtime car search failed",
+        )
+
+        return reply
+          .status(502)
+          .send({
+            success: false,
+            error:
+              "Lucy could not complete the live rental-car search right now.",
+            cars: [],
+          })
+      }
+    },
+  )
+
+  app.post(
     "/flight-attendant/realtime-session",
     {
       preHandler: [app.authenticate],
@@ -996,6 +1278,225 @@ export async function flightAttendantRoutes(app: FastifyInstance) {
             response.output_text
           )
 
+      if (
+        lucyResponse.action?.type ===
+        "search_flights"
+      ) {
+        try {
+          const searchResult =
+            await searchLucyFlights(
+              lucyResponse.action,
+            )
+
+          const offers =
+            searchResult.offers
+
+          const finalReply =
+            offers.length > 0
+              ? [
+                `I found ${offers.length} live flight option${offers.length === 1 ? "" : "s"} for ${lucyResponse.action.origin} → ${lucyResponse.action.destination}.`,
+                "",
+                ...offers.map(
+                  (offer, index) => {
+                    const price =
+                      `${offer.totalCurrency} ${offer.totalAmount}`
+
+                    const stops =
+                      offer.stops === 0
+                        ? "Nonstop"
+                        : `${offer.stops} stop${offer.stops === 1 ? "" : "s"}`
+
+                    return `${index + 1}. ${offer.airlineName || offer.airlineIataCode || "Airline"} ${offer.flightNumber || ""} · ${price} · ${stops} · ${offer.departureTime || "Departure time unavailable"}`
+                  },
+                ),
+              ].join("\n")
+              : `I searched live inventory for ${lucyResponse.action.origin} → ${lucyResponse.action.destination} on ${lucyResponse.action.departureDate}, but I couldn't find matching flights right now.`
+
+          await saveAssistantReply(
+            finalReply,
+          )
+
+          return {
+            success: true,
+            model,
+            reply: finalReply,
+            action: null,
+            liveSearch: {
+              type: "flights",
+              ...searchResult,
+            },
+            conversationId,
+          }
+        } catch (error) {
+          request.log.error(
+            { error },
+            "Lucy text flight search failed",
+          )
+
+          const finalReply =
+            "I couldn't complete the live flight search right now. Please try again."
+
+          await saveAssistantReply(
+            finalReply,
+          )
+
+          return {
+            success: true,
+            model,
+            reply: finalReply,
+            action: null,
+            conversationId,
+          }
+        }
+      }
+
+      if (
+        lucyResponse.action?.type ===
+        "search_hotels"
+      ) {
+        try {
+          const searchResult =
+            await searchLucyHotels(
+              lucyResponse.action,
+            )
+
+          const hotels =
+            searchResult.hotels
+
+          const finalReply =
+            hotels.length > 0
+              ? [
+                `I found ${hotels.length} live hotel option${hotels.length === 1 ? "" : "s"} in ${lucyResponse.action.destination}.`,
+                "",
+                ...hotels.map(
+                  (hotel, index) => {
+                    const price =
+                      hotel.totalAmount != null
+                        ? `${hotel.totalCurrency || "USD"} ${hotel.totalAmount}`
+                        : "Price unavailable"
+
+                    const rating =
+                      hotel.rating != null
+                        ? ` · ${hotel.rating}★`
+                        : ""
+
+                    return `${index + 1}. ${hotel.name}${rating} · ${price}`
+                  },
+                ),
+              ].join("\n")
+              : `I searched live hotel inventory in ${lucyResponse.action.destination} for ${lucyResponse.action.checkInDate} to ${lucyResponse.action.checkOutDate}, but I couldn't find matching availability right now.`
+
+          await saveAssistantReply(
+            finalReply,
+          )
+
+          return {
+            success: true,
+            model,
+            reply: finalReply,
+            action: null,
+            liveSearch: {
+              type: "hotels",
+              ...searchResult,
+            },
+            conversationId,
+          }
+        } catch (error) {
+          request.log.error(
+            { error },
+            "Lucy text hotel search failed",
+          )
+
+          const finalReply =
+            "I couldn't complete the live hotel search right now. Please try again."
+
+          await saveAssistantReply(
+            finalReply,
+          )
+
+          return {
+            success: true,
+            model,
+            reply: finalReply,
+            action: null,
+            conversationId,
+          }
+        }
+      }
+
+      if (
+        lucyResponse.action?.type ===
+        "search_cars"
+      ) {
+        try {
+          const searchResult =
+            await searchLucyCars(
+              lucyResponse.action,
+            )
+
+          const cars =
+            searchResult.cars
+
+          const finalReply =
+            cars.length > 0
+              ? [
+                `I found ${cars.length} live rental-car option${cars.length === 1 ? "" : "s"} for ${searchResult.pickupLocation.code}.`,
+                "",
+                ...cars.map(
+                  (car, index) => {
+                    const price =
+                      car.totalAmount != null
+                        ? `${car.currency || "USD"} ${car.totalAmount}`
+                        : "Price unavailable"
+
+                    const supplier =
+                      car.supplierName
+                        ? ` · ${car.supplierName}`
+                        : ""
+
+                    return `${index + 1}. ${car.name}${supplier} · ${price}`
+                  },
+                ),
+              ].join("\n")
+              : `I searched live rental-car inventory for ${lucyResponse.action.pickupLocation}, but I couldn't find matching vehicles right now.`
+
+          await saveAssistantReply(
+            finalReply,
+          )
+
+          return {
+            success: true,
+            model,
+            reply: finalReply,
+            action: null,
+            liveSearch: {
+              type: "cars",
+              ...searchResult,
+            },
+            conversationId,
+          }
+        } catch (error) {
+          request.log.error(
+            { error },
+            "Lucy text car search failed",
+          )
+
+          const finalReply =
+            "I couldn't complete the live rental-car search right now. Please try again."
+
+          await saveAssistantReply(
+            finalReply,
+          )
+
+          return {
+            success: true,
+            model,
+            reply: finalReply,
+            action: null,
+            conversationId,
+          }
+        }
+      }
 
       const singleMemoryAction =
         lucyResponse.action?.type === "save_lucy_memory"

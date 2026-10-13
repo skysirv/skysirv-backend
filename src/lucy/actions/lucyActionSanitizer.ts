@@ -4,6 +4,9 @@ import {
   type LucySaveFirstNameAction,
   type LucySaveMemoryAction,
   type LucySaveVisibleFlightAction,
+  type LucySearchCarsAction,
+  type LucySearchFlightsAction,
+  type LucySearchHotelsAction,
   type LucySuggestedAction,
   type LucyWatchlistAction,
 } from "../models/lucyActions.types.js"
@@ -411,10 +414,402 @@ export function cleanLucyMemorySubject(
   }
 }
 
-export function cleanLucySuggestedAction(value: unknown): LucySuggestedAction | null {
+export function cleanLucySearchFlightsAction(
+  value: unknown,
+): LucySearchFlightsAction | null {
   if (!value || typeof value !== "object") return null
 
-  const input = value as { type?: unknown }
+  const input =
+    value as Partial<LucySearchFlightsAction>
+
+  if (input.type !== "search_flights") {
+    return null
+  }
+
+  const origin =
+    cleanAirportCode(input.origin)
+
+  const destination =
+    cleanAirportCode(input.destination)
+
+  const departureDate =
+    cleanDepartureDate(input.departureDate)
+
+  const returnDate =
+    typeof input.returnDate === "string" &&
+      input.returnDate.trim()
+      ? cleanDepartureDate(input.returnDate)
+      : null
+
+  if (
+    !origin ||
+    !destination ||
+    !departureDate ||
+    origin === destination
+  ) {
+    return null
+  }
+
+  const tripType =
+    input.tripType === "round_trip"
+      ? "round_trip"
+      : "one_way"
+
+  if (
+    tripType === "round_trip" &&
+    !returnDate
+  ) {
+    return null
+  }
+
+  const cabinClass =
+    input.cabinClass === "premium_economy" ||
+      input.cabinClass === "business" ||
+      input.cabinClass === "first"
+      ? input.cabinClass
+      : "economy"
+
+  const departurePeriod =
+    input.departurePeriod === "early_morning" ||
+      input.departurePeriod === "morning" ||
+      input.departurePeriod === "afternoon" ||
+      input.departurePeriod === "evening"
+      ? input.departurePeriod
+      : "any"
+
+  const adults =
+    typeof input.adults === "number" &&
+      Number.isFinite(input.adults)
+      ? Math.max(
+        1,
+        Math.min(
+          9,
+          Math.floor(input.adults),
+        ),
+      )
+      : 1
+
+  const children =
+    typeof input.children === "number" &&
+      Number.isFinite(input.children)
+      ? Math.max(
+        0,
+        Math.min(
+          9,
+          Math.floor(input.children),
+        ),
+      )
+      : 0
+
+  const infants =
+    typeof input.infants === "number" &&
+      Number.isFinite(input.infants)
+      ? Math.max(
+        0,
+        Math.min(
+          9,
+          Math.floor(input.infants),
+        ),
+      )
+      : 0
+
+  const maxConnections =
+    typeof input.maxConnections === "number" &&
+      Number.isFinite(input.maxConnections)
+      ? Math.max(
+        0,
+        Math.min(
+          3,
+          Math.floor(
+            input.maxConnections,
+          ),
+        ),
+      )
+      : 1
+
+  const airlineIataCode =
+    typeof input.airlineIataCode === "string" &&
+      input.airlineIataCode.trim()
+      ? input.airlineIataCode
+        .trim()
+        .toUpperCase()
+        .slice(0, 3)
+      : null
+
+  const maxResults =
+    typeof input.maxResults === "number" &&
+      Number.isFinite(input.maxResults)
+      ? Math.max(
+        1,
+        Math.min(
+          8,
+          Math.floor(input.maxResults),
+        ),
+      )
+      : 5
+
+  return {
+    type: "search_flights",
+    status: "ready",
+    tripType,
+    origin,
+    destination,
+    departureDate,
+    returnDate,
+    adults,
+    children,
+    infants,
+    cabinClass,
+    maxConnections,
+    airlineIataCode,
+    departurePeriod,
+    maxResults,
+  }
+}
+
+export function cleanLucySearchHotelsAction(
+  value: unknown,
+): LucySearchHotelsAction | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const input =
+    value as Partial<LucySearchHotelsAction>
+
+  if (input.type !== "search_hotels") {
+    return null
+  }
+
+  const destination =
+    typeof input.destination === "string"
+      ? input.destination
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 160)
+      : ""
+
+  const checkInDate =
+    cleanDepartureDate(input.checkInDate)
+
+  const checkOutDate =
+    cleanDepartureDate(input.checkOutDate)
+
+  if (
+    !destination ||
+    !checkInDate ||
+    !checkOutDate ||
+    checkOutDate <= checkInDate
+  ) {
+    return null
+  }
+
+  const adults =
+    typeof input.adults === "number" &&
+      Number.isFinite(input.adults)
+      ? Math.max(
+        1,
+        Math.min(
+          18,
+          Math.floor(input.adults),
+        ),
+      )
+      : 1
+
+  const rooms =
+    typeof input.rooms === "number" &&
+      Number.isFinite(input.rooms)
+      ? Math.max(
+        1,
+        Math.min(
+          8,
+          Math.floor(input.rooms),
+        ),
+      )
+      : 1
+
+  const childAges =
+    Array.isArray(input.childAges)
+      ? input.childAges
+        .filter(
+          (age): age is number =>
+            typeof age === "number" &&
+            Number.isFinite(age),
+        )
+        .map((age) =>
+          Math.max(
+            0,
+            Math.min(
+              17,
+              Math.floor(age),
+            ),
+          ),
+        )
+        .slice(0, 8)
+      : []
+
+  const freeCancellationOnly =
+    input.freeCancellationOnly === true
+
+  const maxResults =
+    typeof input.maxResults === "number" &&
+      Number.isFinite(input.maxResults)
+      ? Math.max(
+        1,
+        Math.min(
+          8,
+          Math.floor(input.maxResults),
+        ),
+      )
+      : 5
+
+  return {
+    type: "search_hotels",
+    status: "ready",
+    destination,
+    checkInDate,
+    checkOutDate,
+    adults,
+    childAges,
+    rooms,
+    freeCancellationOnly,
+    maxResults,
+  }
+}
+
+export function cleanLucySearchCarsAction(
+  value: unknown,
+): LucySearchCarsAction | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const input =
+    value as Partial<LucySearchCarsAction>
+
+  if (input.type !== "search_cars") {
+    return null
+  }
+
+  const pickupLocation =
+    typeof input.pickupLocation === "string"
+      ? input.pickupLocation
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 160)
+      : ""
+
+  const dropoffLocation =
+    typeof input.dropoffLocation === "string"
+      ? input.dropoffLocation
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 160)
+      : ""
+
+  const pickupDate =
+    cleanDepartureDate(input.pickupDate)
+
+  const dropoffDate =
+    cleanDepartureDate(input.dropoffDate)
+
+  const normalizeTime = (
+    value: unknown,
+    fallback: string,
+  ) => {
+    if (
+      typeof value === "string" &&
+      /^([01]\d|2[0-3]):[0-5]\d$/.test(
+        value.trim(),
+      )
+    ) {
+      return value.trim()
+    }
+
+    return fallback
+  }
+
+  const pickupTime =
+    normalizeTime(
+      input.pickupTime,
+      "10:00",
+    )
+
+  const dropoffTime =
+    normalizeTime(
+      input.dropoffTime,
+      "10:00",
+    )
+
+  if (
+    !pickupLocation ||
+    !dropoffLocation ||
+    !pickupDate ||
+    !dropoffDate ||
+    dropoffDate < pickupDate
+  ) {
+    return null
+  }
+
+  const driverAge =
+    typeof input.driverAge === "number" &&
+      Number.isFinite(input.driverAge)
+      ? Math.max(
+        18,
+        Math.min(
+          99,
+          Math.floor(input.driverAge),
+        ),
+      )
+      : null
+
+  const maxResults =
+    typeof input.maxResults === "number" &&
+      Number.isFinite(input.maxResults)
+      ? Math.max(
+        1,
+        Math.min(
+          8,
+          Math.floor(input.maxResults),
+        ),
+      )
+      : 5
+
+  return {
+    type: "search_cars",
+    status: "ready",
+    pickupLocation,
+    dropoffLocation,
+    pickupDate,
+    dropoffDate,
+    pickupTime,
+    dropoffTime,
+    driverAge,
+    maxResults,
+  }
+}
+
+export function cleanLucySuggestedAction(
+  value: unknown,
+): LucySuggestedAction | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const input =
+    value as { type?: unknown }
+
+  if (input.type === "search_flights") {
+    return cleanLucySearchFlightsAction(value)
+  }
+
+  if (input.type === "search_hotels") {
+    return cleanLucySearchHotelsAction(value)
+  }
+
+  if (input.type === "search_cars") {
+    return cleanLucySearchCarsAction(value)
+  }
 
   if (input.type === "add_watchlist_route") {
     return cleanLucyWatchlistAction(value)
